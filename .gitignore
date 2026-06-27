@@ -42,3 +42,6 @@ site/
 
 
 .ruff_cache
+
+z_examples
+z_experiments

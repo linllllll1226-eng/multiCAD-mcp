@@ -433,6 +433,42 @@ class CADInterface(ABC):
         """
         pass
 
+    @abstractmethod
+    def draw_table(
+        self,
+        insertion_point: Coordinate,
+        num_rows: int,
+        num_cols: int,
+        row_height: float,
+        col_width: float,
+        data: Optional[List[List[str]]] = None,
+        title: Optional[str] = None,
+        headers: Optional[List[str]] = None,
+        layer: str = "0",
+        color: str | int = "white",
+        _skip_refresh: bool = False,
+    ) -> str:
+        """
+        Draw a table at the insertion point, setting values for cells.
+
+        Args:
+            insertion_point: Insertion coordinate (x, y) or (x, y, z)
+            num_rows: Number of rows
+            num_cols: Number of columns
+            row_height: Default row height
+            col_width: Default column width
+            data: 2D list of strings containing cell contents for data cells
+            title: Table title (first row)
+            headers: Column headers (second row)
+            layer: Layer name
+            color: Color name or index
+            _skip_refresh: Internal flag to skip view refresh
+
+        Returns:
+            str: Entity handle/ID
+        """
+        pass
+
     # ========== Array Operations ==========
 
     @abstractmethod

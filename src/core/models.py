@@ -572,3 +572,26 @@ class DrawMLeaderRequest(BaseModel):
         LayerValidator(layer=self.layer)
 
         return self
+
+
+class DrawTableRequest(BaseModel):
+    """Request model for drawing a table."""
+
+    insertion_point: Tuple[float, float] | Tuple[float, float, float]
+    num_rows: int = Field(gt=0, description="Number of rows must be positive")
+    num_cols: int = Field(gt=0, description="Number of columns must be positive")
+    row_height: float = Field(gt=0, default=3.0, description="Row height must be positive")
+    col_width: float = Field(gt=0, default=15.0, description="Column width must be positive")
+    data: Optional[List[List[str]]] = Field(default=None, description="2D list of cell values for data cells")
+    title: Optional[str] = Field(default=None, description="Table title (placed in row 0)")
+    headers: Optional[List[str]] = Field(default=None, description="Table column headers (placed in row 1)")
+    layer: str = "0"
+    color: Union[str, int] = "white"
+
+    @model_validator(mode="after")
+    def validate_all(self) -> "DrawTableRequest":
+        """Validate all fields."""
+        CoordinateModel.from_tuple(self.insertion_point)
+        ColorValidator(color=self.color)
+        LayerValidator(layer=self.layer)
+        return self

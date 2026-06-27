@@ -16,7 +16,7 @@ multiCAD-mcp is an MCP server that lets you control your CAD software using AI a
 ## Features
 
 - **Multiple CAD Support**: Works with AutoCAD®, ZWCAD®, GstarCAD®, and BricsCAD®
-- **7 Unified MCP Tools**: Clean access to **55 CAD commands** for drawing, layers, entities, blocks, and files
+- **7 Unified MCP Tools**: Clean access to **56 CAD commands** for drawing, layers, entities, blocks, and files
 - **Block Attributes** (v0.2.0+): Read and write block attribute values
 - **Block Creation**: Create blocks from entities or user selection
 - **Simple command execution**: "Draw a red circle at 50,50 with radius 25" - no complex syntax needed
@@ -71,9 +71,9 @@ Replace `C:\path\to\multiCAD-mcp` with your actual installation path.
 
 ### Direct Tool Calls
 
-multiCAD-mcp provides **7 unified MCP tools** that provide access to **54 different CAD commands**. This architecture is designed for high efficiency, allowing multiple operations to be dispatched in single calls, reducing API overhead by up to 70%.
+multiCAD-mcp provides **7 unified MCP tools** that provide access to **56 different CAD commands**. This architecture is designed for high efficiency, allowing multiple operations to be dispatched in single calls, reducing API overhead by up to 70%.
 
-- **Drawing & Shapes**: Lines, circles, arcs, rectangles, polylines, and splines.
+- **Drawing & Shapes**: Lines, circles, arcs, rectangles, polylines, splines, and tables.
 - **Block Management**: Create blocks (from entities or selection), insert (batch/single), list, and audit.
 - **Layer Management**: Create, list, rename/delete (batch), and toggle visibility.
 - **Entity Manipulation**: Move, rotate, scale, copy/paste, and selection (by type/layer/color).
@@ -119,7 +119,8 @@ Edit `src/config.json` to customize:
     "port": 8888
   },
   "output": {
-    "directory": "~/Documents/multiCAD Exports"
+    "directory": "~/Documents/multiCAD Exports",
+    "allow_arbitrary_paths": true
   }
 }
 ```
@@ -132,6 +133,7 @@ Edit `src/config.json` to customize:
 - **`dashboard.port`**: Web dashboard port (default: 8888)
 - **`open_dashboard`**: [host, port] — open web dashboard in browser (default from config.json: 8888)
 - **`output.directory`**: Default directory for saved drawings and exports
+- **`output.allow_arbitrary_paths`**: Set to `true` to allow saving files to any absolute path on the system, bypassing path-traversal prevention checks.
 
 ## Troubleshooting
 

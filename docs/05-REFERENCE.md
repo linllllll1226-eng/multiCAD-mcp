@@ -2,12 +2,12 @@
 
 ## Summary
 
-**7 unified MCP tools** providing access to **55 CAD commands** via a shorthand dispatch format:
+**7 unified MCP tools** providing access to **56 CAD commands** via a shorthand dispatch format:
 
 | Unified Tool | Actions | Category |
 |--------------|---------|----------|
 | `manage_session` | connect, disconnect, status, zoom_extents, undo, redo, screenshot, export_view, check_running, open_dashboard, list_supported | Connection & Control |
-| `draw_entities` | line, circle, arc, rect, polyline, spline, text, dimension, leader, mleader | Drawing |
+| `draw_entities` | line, circle, arc, rect, polyline, spline, text, dimension, leader, mleader, table | Drawing |
 | `manage_blocks` | list, info, insert, create, get_attrs, set_attrs | Blocks |
 | `manage_layers` | create, delete, rename, on, off, set_color, is_on, list, info | Layers |
 | `manage_files` | save, new, close, list, switch | Files |
@@ -24,6 +24,7 @@ All tools accept operations as a **plain-text shorthand** (one per line), which 
 # draw_entities
 line|0,0|100,0|red|walls
 circle|50,40|10|blue
+table|0,0|4|3|3|15|Precios|Item;Cant;Val|Acero;10;150~~Mano;5;120
 
 # manage_layers
 create|walls|red|50
@@ -74,11 +75,14 @@ text|pos|text|height|color                    → text|5,5|Hello World|2.5
 dimension|start|end|color                     → dimension|0,0|10,0
 leader|pts(;sep)|text|height|color|layer      → leader|0,0;10,10|My note|2.5|red
 leader|group1~~group2|text|...                → leader|0,0;10,10~~20,0;10,10|Label
+table|ins|rows|cols|row_h|col_w|title|headers|data → table|0,0|4|3|3|15|Precios|Item;Cant;Val|Acero;10;150~~Mano;5;120
 ```
 
 **DEFAULTS:** `color=white`, `layer=0`
 
 **Leaders:** first point = arrowhead, last point = text attach. Use `~~` for multi-arrow.
+
+**Tables (alias `tab`):** Row 0 is Title, Row 1 contains column Headers, Row 2 onwards are Data rows. Semicolon `;` separates column/cell values. Double tildes `~~` separate data rows.
 
 ---
 

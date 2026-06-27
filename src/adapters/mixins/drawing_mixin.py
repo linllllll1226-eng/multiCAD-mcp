@@ -815,3 +815,97 @@ class DrawingMixin:
         except Exception as e:
             logger.error(f"Failed to create MLeader: {e}")
             raise CADOperationError("draw_mleader", f"Failed to create MLeader: {e}")
+
+    def draw_table(
+        self,
+        insertion_point: Coordinate,
+        num_rows: int,
+        num_cols: int,
+        row_height: float,
+        col_width: float,
+        data: Optional[List[List[str]]] = None,
+        title: Optional[str] = None,
+        headers: Optional[List[str]] = None,
+        layer: str = "0",
+        color: str | int = "white",
+        _skip_refresh: bool = False,
+    ) -> str:
+        """Draw a table via COM AddTable().
+
+        Args:
+            insertion_point: Insertion coordinate as (x, y) or (x, y, z).
+            num_rows: Number of rows in the table.
+            num_cols: Number of columns in the table.
+            row_height: Default row height.
+            col_width: Default column width.
+            data: 2D list of cell values for data rows.
+            title: Table title (placed in row 0).
+            headers: Table column headers (placed in row 1).
+            layer: Layer name for the entity (default: ``"0"``).
+            color: Color name or ACI index (default: ``"white"``).
+            _skip_refresh: Internal flag to skip view refresh.
+
+        Returns:
+            Handle string of the created table entity.
+        """
+        try:
+            self._validate_connection()
+            document = self._get_document("draw_table")
+
+            insert_pt = CADInterface.normalize_coordinate(insertion_point)
+            insert_array = self._to_variant_array(insert_pt)
+
+            table = document.ModelSpace.AddTable(
+                insert_array,
+                num_rows,
+                num_cols,
+                row_height,
+                col_width,
+            )
+
+            # Set title if provided (Row 0)
+            if title:
+                try:
+                    table.SetText(0, 0, title)
+                except Exception as e:
+                    logger.warning(f"Failed to set table title: {e}")
+
+            # Set headers if provided (Row 1)
+            if headers:
+                for col_idx, header_text in enumerate(headers):
+                    if col_idx < num_cols:
+                        try:
+                            table.SetText(1, col_idx, str(header_text))
+                        except Exception as e:
+                            logger.warning(f"Failed to set table header at column {col_idx}: {e}")
+
+            # Set data if provided (Row 2 onwards)
+            if data:
+                for row_offset, row_data in enumerate(data):
+                    row_idx = row_offset + 2
+                    if row_idx < num_rows:
+                        for col_idx, cell_value in enumerate(row_data):
+                            if col_idx < num_cols:
+                                try:
+                                    table.SetText(row_idx, col_idx, str(cell_value))
+                                except Exception as e:
+                                    logger.warning(f"Failed to set table cell at row {row_idx}, col {col_idx}: {e}")
+
+            try:
+                table.Update()
+            except Exception:
+                pass
+
+            return self._finalize_entity(
+                table,
+                layer,
+                color,
+                0,
+                "table",
+                _skip_refresh,
+                f"Drew table at {insertion_point} with {num_rows} rows and {num_cols} columns",
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to create Table: {e}")
+            raise CADOperationError("draw_table", f"Failed to create Table: {e}")

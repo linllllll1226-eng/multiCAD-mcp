@@ -48,6 +48,7 @@ from core.models import (
     DrawTextRequest,
     DrawSplineRequest,
     DrawMLeaderRequest,
+    DrawTableRequest,
 )
 from mcp_tools.decorators import cad_tool, get_current_adapter
 from mcp_tools.helpers import parse_coordinate
@@ -381,13 +382,17 @@ def _draw_leader_unified(spec: Dict[str, Any]) -> str:
         f"Unified Leader Groups Parsed: {len(leader_groups)} groups. Spec: {leader_groups}"
     )
 
+    text_height_val = spec.get("text_height")
+    if text_height_val is None:
+        text_height_val = spec.get("height")
+    if text_height_val is None:
+        text_height_val = 2.5
+
     validated = DrawMLeaderRequest(
         base_point=base_pt,
         leader_groups=leader_groups,
         text=spec.get("text"),
-        text_height=spec.get(
-            "text_height", spec.get("height", 2.5)
-        ),  # Support 'height' alias
+        text_height=text_height_val,
         color=spec.get("color", "white"),
         layer=spec.get("layer", "0"),
         arrow_style=spec.get("arrow_style", "_ARROW"),
@@ -405,6 +410,62 @@ def _draw_leader_unified(spec: Dict[str, Any]) -> str:
     )
 
 
+def _draw_table(spec: Dict[str, Any]) -> str:
+    """Draw a table entity.
+
+    Args:
+        spec: Entity spec with keys: insertion_point (str), num_rows (int), num_cols (int),
+            row_height (float, optional), col_width (float, optional),
+            title (str, optional), headers (str or list, optional), data (str or list, optional),
+            color (str, optional), layer (str, optional).
+
+    Returns:
+        Entity handle string for the created table.
+    """
+    ins_pt = parse_coordinate(spec["insertion_point"])
+    
+    headers = spec.get("headers")
+    if isinstance(headers, str):
+        headers = [h.strip() for h in headers.split(";") if h.strip()]
+        
+    data = spec.get("data")
+    if isinstance(data, str):
+        parsed_data = []
+        for row_str in data.split("~~"):
+            row_str = row_str.strip()
+            if row_str:
+                row_cells = [c.strip() for c in row_str.split(";")]
+                parsed_data.append(row_cells)
+        data = parsed_data
+
+    validated = DrawTableRequest(
+        insertion_point=ins_pt,
+        num_rows=int(spec["num_rows"]),
+        num_cols=int(spec["num_cols"]),
+        row_height=float(spec.get("row_height", 3.0)),
+        col_width=float(spec.get("col_width", 15.0)),
+        data=data,
+        title=spec.get("title"),
+        headers=headers,
+        color=spec.get("color", "white"),
+        layer=spec.get("layer", "0"),
+    )
+    
+    return get_current_adapter().draw_table(
+        validated.insertion_point,
+        validated.num_rows,
+        validated.num_cols,
+        validated.row_height,
+        validated.col_width,
+        validated.data,
+        validated.title,
+        validated.headers,
+        validated.layer,
+        validated.color,
+        _skip_refresh=True,
+    )
+
+
 # Dispatch table: type name -> (handler, required_fields)
 ENTITY_DISPATCH: Dict[str, Tuple[Callable, List[str]]] = {
     "line": (_draw_line, ["start", "end"]),
@@ -418,6 +479,7 @@ ENTITY_DISPATCH: Dict[str, Tuple[Callable, List[str]]] = {
     # Both leader types now use the unified handler
     "leader": (_draw_leader_unified, ["points"]),
     "mleader": (_draw_leader_unified, ["leader_groups"]),
+    "table": (_draw_table, ["insertion_point", "num_rows", "num_cols"]),
 }
 
 
@@ -457,6 +519,7 @@ def register_drawing_tools(mcp):
                 dimension|start|end|color                     → dimension|0,0|10,0
                 leader|puntos|texto|altura|color|capa         → leader|0,0;10,10|Mi nota|2.5|red
                 leader|grupo1~~grupo2~~...|texto|altura|color → leader|0,0;10,10~~0,0;-10,10|Nota
+                table|ins|rows|cols|row_h|col_w|title|headers|data → table|0,0|4|3|3|15|Precios|Item;Cant;Val|Acero;10;150~~Mano;5;120
 
                 DEFAULTS: color=white, layer=0
 
@@ -467,6 +530,7 @@ def register_drawing_tools(mcp):
                     text|50,40|Center|2.5|white
                     leader|50,40;60,50|Dimension|2.5|blue
                     leader|0,0;10,10~~20,0;10,10|Converging Arrows|2.5|red
+                    table|0,0|4|3|3|15|Precios|Item;Cant;Val|Acero;10;150~~Pintura;5;50
 
                 IMPORTANT for Leaders:
                 - Always creates an MLeader entity.
@@ -474,6 +538,12 @@ def register_drawing_tools(mcp):
                 - Each group is a list of points: `arrow_start;...;text_attach_point`
                 - To create multiple arrows pointing to the SAME text, ensure the LAST point
                   of every group is the SAME (the text position).
+
+                IMPORTANT for Tables:
+                - Creates a native AutoCAD table entity.
+                - Row 0 is the Title. Row 1 contains column Headers. Row 2 and onwards are Data rows.
+                - Headers: Semicolon-separated values for the columns.
+                - Data: Rows separated by double tildes `~~`, and cell values within each row separated by semicolons `;`.
 
                 Example of Multi-Arrow Leader (Converging):
                     `leader|10,10;50,50~~10,90;50,50|Label`

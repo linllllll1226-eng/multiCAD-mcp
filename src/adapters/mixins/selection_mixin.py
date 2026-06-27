@@ -166,6 +166,7 @@ class SelectionMixin:
             "polyline": "AcDb2dPolyline",
             "text": "AcDbText",
             "point": "AcDbPoint",
+            "table": "AcDbTable",
         }
 
         object_name = type_map.get(entity_type.lower(), entity_type)

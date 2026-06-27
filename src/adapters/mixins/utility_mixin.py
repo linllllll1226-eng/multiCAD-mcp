@@ -508,15 +508,21 @@ class UtilityMixin:
             bool: True if path is safe
 
         Raises:
-            CADOperationError: If path traversal is detected
+            CADOperationError: If path traversal is detected or allowed
         """
+        config = ConfigManager().config
+        if getattr(config.output, "allow_arbitrary_paths", False):
+            logger.debug(f"Bypassing path validation for: {resolved_path}")
+            return True
+
         try:
             resolved_path.resolve().relative_to(output_dir.resolve())
             return True
         except ValueError:
             raise CADOperationError(
                 "resolve_export_path",
-                f"Path traversal detected: {resolved_path} is outside {output_dir}",
+                f"Path traversal detected: {resolved_path} is outside {output_dir}. "
+                "Enable 'allow_arbitrary_paths' in config to bypass.",
             )
 
     def _handle_operation_error(

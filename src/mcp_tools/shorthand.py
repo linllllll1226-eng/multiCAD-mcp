@@ -104,11 +104,24 @@ ENTITY_FIELDS: Dict[str, FieldList] = {
         ("layer", False, "0"),
         ("arrow_style", False, "_ARROW"),
     ],
+    "table": [
+        ("insertion_point", True, None),
+        ("num_rows", True, None),
+        ("num_cols", True, None),
+        ("row_height", False, 3.0),
+        ("col_width", False, 15.0),
+        ("title", False, None),
+        ("headers", False, None),
+        ("data", False, None),
+        ("color", False, "white"),
+        ("layer", False, "0"),
+    ],
 }
 
 # Type aliases for rectangle
 ENTITY_ALIASES = {
     "rect": "rectangle",
+    "tab": "table",
 }
 
 
@@ -190,6 +203,10 @@ def parse_entity_shorthand(line: str) -> Dict[str, Any]:
                 "end_angle",
                 "offset",
                 "text_height",
+                "row_height",
+                "col_width",
+                "num_rows",
+                "num_cols",
             ):
                 spec[field_name] = _try_number(value)
             else:

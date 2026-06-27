@@ -26,6 +26,7 @@ class OutputConfig:
 
     directory: str  # Where to save generated DWG files
     format: str  # File format (dwg, dxf, etc.)
+    allow_arbitrary_paths: bool = False
 
 
 @dataclass
@@ -137,6 +138,7 @@ class ConfigManager:
             output=OutputConfig(
                 directory="~/Documents/multiCAD Exports",
                 format="dwg",
+                allow_arbitrary_paths=False,
             ),
             dashboard=DashboardConfig(
                 port=8888,
@@ -164,6 +166,7 @@ class ConfigManager:
             output = OutputConfig(
                 directory=out_dict.get("directory", "~/Documents/multiCAD Exports"),
                 format=out_dict.get("format", "dwg"),
+                allow_arbitrary_paths=out_dict.get("allow_arbitrary_paths", False),
             )
 
             # Parse dashboard config

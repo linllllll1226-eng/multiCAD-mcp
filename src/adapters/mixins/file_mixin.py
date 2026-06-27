@@ -75,9 +75,13 @@ class FileMixin:
             if not save_filename.lower().endswith(f".{format}"):
                 save_filename = f"{save_filename}.{format}"
 
-            # ========== Resolve Final Path using Centralized Utility ==========
-            final_path_str = self.resolve_export_path(save_filename, "drawings")
-            final_path = Path(final_path_str)
+            # ========== Resolve Final Path ==========
+            if filepath and Path(filepath).is_absolute() and getattr(config.output, "allow_arbitrary_paths", False):
+                final_path = Path(filepath)
+            else:
+                # Use centralized export path resolution for standard saves
+                final_path_str = self.resolve_export_path(save_filename, "drawings")
+                final_path = Path(final_path_str)
 
             # Save the drawing
             document.SaveAs(str(final_path))
