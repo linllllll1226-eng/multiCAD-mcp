@@ -22,6 +22,9 @@ verify_*.py
 debug_*.py
 dxf_dump.txt
 
+# Keep repository unit tests trackable despite the artifact patterns above
+!tests/unit/test_*.py
+
 # Logging
 logs/multicad_mcp.log
 
@@ -45,3 +48,10 @@ site/
 
 z_examples
 z_experiments
+
+# Local CAD memory (must never be committed or uploaded)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/*.sqlite
+data/*.sqlite3
