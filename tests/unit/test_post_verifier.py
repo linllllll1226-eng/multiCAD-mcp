@@ -23,6 +23,33 @@ class FakeDimension:
     TextFill = False
 
 
+class FakeRectangle:
+    """Closed rectangular lightweight polyline returned by AutoCAD."""
+
+    Handle = "R1"
+    ObjectName = "AcDb2dPolyline"
+    Layer = "AI_PREVIEW_OUTLINE"
+    Linetype = "ByLayer"
+    Closed = True
+    Coordinates = (
+        0.0,
+        0.0,
+        0.0,
+        1000.0,
+        0.0,
+        0.0,
+        1000.0,
+        600.0,
+        0.0,
+        0.0,
+        600.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+    )
+
+
 class FakeDocument:
     """Minimal COM document double."""
 
@@ -86,3 +113,34 @@ def test_actual_circle_matches_center_and_diameter():
         "linetype",
         "object_type",
     } <= properties
+
+
+def test_actual_rectangle_reports_width_height_and_closed_state():
+    """Verify rectangle size from real polyline coordinates, not plan intent."""
+    plan = DrawingPlan.model_validate(
+        {
+            "task_name": "rectangle",
+            "unit": "mm",
+            "user_confirmed": True,
+            "existing_layers": ["AI_PREVIEW_OUTLINE"],
+            "entities": [
+                {
+                    "entity_type": "rectangle",
+                    "coordinates": {"corner1": [0, 0, 0], "corner2": [1000, 600, 0]},
+                    "dimensions": {"width": 1000, "height": 600},
+                    "layer": "AI_PREVIEW_OUTLINE",
+                    "linetype": "ByLayer",
+                    "dimension_source": "explicit_dimension",
+                    "confidence": 1,
+                }
+            ],
+        }
+    )
+    result = PostExecutionVerifier().verify(
+        FakeAdapter({"R1": FakeRectangle()}), plan, ["R1"]
+    )
+    assert result["passed"], result
+    rows = {row["property"]: row for row in result["rows"]}
+    assert rows["width"]["actual"] == 1000
+    assert rows["height"]["actual"] == 600
+    assert rows["closed"]["actual"] is True

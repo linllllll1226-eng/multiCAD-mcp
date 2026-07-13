@@ -43,12 +43,21 @@ def read_entity_state(entity: Any) -> dict[str, Any]:
         "measurement": "Measurement",
         "text_override": "TextOverride",
         "text_position": "TextPosition",
+        "coordinates": "Coordinates",
     }.items():
         value = _safe_get(entity, prop)
         if value is not None:
             state[output] = _serializable(value)
     if "radius" in state:
         state["diameter"] = 2.0 * float(state["radius"])
+    coordinates = state.get("coordinates")
+    if isinstance(coordinates, list) and len(coordinates) >= 4:
+        object_type = str(state.get("object_type", "")).lower()
+        stride = 3 if "2dpolyline" in object_type else 2
+        xs = [float(value) for value in coordinates[0::stride]]
+        ys = [float(value) for value in coordinates[1::stride]]
+        state["width"] = max(xs) - min(xs)
+        state["height"] = max(ys) - min(ys)
     fill_values = [
         _safe_get(entity, "TextFill"),
         _safe_get(entity, "UseBackgroundColor"),
@@ -58,11 +67,11 @@ def read_entity_state(entity: Any) -> dict[str, Any]:
     return state
 
 
-def _expected_object_type(entity_type: str) -> str:
+def _expected_object_type(entity_type: str) -> str | list[str]:
     return {
         "line": "AcDbLine",
-        "rectangle": "AcDbPolyline",
-        "polyline": "AcDbPolyline",
+        "rectangle": ["AcDbPolyline", "AcDb2dPolyline"],
+        "polyline": ["AcDbPolyline", "AcDb2dPolyline"],
         "circle": "AcDbCircle",
         "arc": "AcDbArc",
         "aligned_dimension": "AcDbAlignedDimension",
@@ -132,6 +141,10 @@ class PostExecutionVerifier:
             checks["length"] = math.dist(a[:2], b[:2])
         elif kind == "rectangle":
             checks["closed"] = True
+            if "width" in target.dimensions:
+                checks["width"] = target.dimensions["width"]
+            if "height" in target.dimensions:
+                checks["height"] = target.dimensions["height"]
         elif kind == "polyline" and "closed" in target.dimensions:
             checks["closed"] = bool(target.dimensions["closed"])
         elif kind == "circle":
@@ -158,7 +171,11 @@ class PostExecutionVerifier:
         for name, target_value in checks.items():
             actual_value = actual.get(name)
             error = _numeric_error(target_value, actual_value)
-            if error is not None:
+            if name == "object_type" and isinstance(target_value, list):
+                passed = str(actual_value).lower() in {
+                    value.lower() for value in target_value
+                }
+            elif error is not None:
                 passed = error <= tolerance
             else:
                 passed = str(target_value).lower() == str(actual_value).lower()
