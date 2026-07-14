@@ -28,11 +28,16 @@ Owned creation entities store:
 - dimension source and confidence
 - approximate-reference state
 - execution result ID
+- originating drawing name and full path
 - lifecycle status
 
 Layout-only operations may reference an existing handle but never claim ownership
 of that object. Commit and revert reject any handle whose XData does not prove the
 requested task ownership.
+
+Commit, revert, and task-entity reads also compare the task's recorded drawing
+identity with the active AutoCAD document. A same-handle or copied-XData object in
+another DWG is therefore blocked before any layer or metadata write.
 
 ## Guarded preview lifecycle
 
@@ -90,7 +95,8 @@ commit or revert.
 
 The isolated acceptance helper creates its own AutoCAD instance, refuses existing
 output paths, generates a blank test drawing, and saves/reopens it to prove XData
-persistence:
+persistence. It also creates a fresh drawing from the saved DWT and verifies that
+the layers, units, text style, and dimension style survive the template round-trip:
 
 ```powershell
 & '.\.venv\Scripts\python.exe' `
@@ -99,6 +105,20 @@ persistence:
 ```
 
 It never opens or modifies a user DWG.
+
+Test migration compatibility only on a disposable copy of the live database:
+
+```powershell
+Copy-Item -LiteralPath '.\data\cad_memory.db' `
+  -Destination "$env:TEMP\cad_memory_migration_copy.db"
+& '.\.venv\Scripts\python.exe' `
+  '.\scripts\Check-CAD-Memory-Migration.py' `
+  "$env:TEMP\cad_memory_migration_copy.db"
+```
+
+The helper refuses a file named exactly `cad_memory.db`, adds only the task tables,
+and verifies that legacy correction, profile, and execution-result row counts remain
+unchanged.
 
 ## Rollback
 

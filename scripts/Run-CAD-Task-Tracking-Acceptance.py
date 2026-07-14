@@ -315,16 +315,75 @@ def _save_template(application: Any, target: Path) -> dict[str, Any]:
     return result
 
 
+def _verify_template_roundtrip(application: Any, target: Path) -> dict[str, Any]:
+    """Create a new drawing from the saved DWT and verify persisted settings."""
+    document = _retry_com(
+        lambda: application.Documents.Add(str(target.resolve()))
+    )
+    _wait_document_ready(document)
+    actual_layers = {str(layer.Name) for layer in document.Layers}
+    expected_layers = set(LAYER_DEFINITIONS) | {"0"}
+    missing_layers = sorted(expected_layers - actual_layers)
+    result = {
+        "created_from_template": True,
+        "modelspace_count": int(document.ModelSpace.Count),
+        "missing_layers": missing_layers,
+        "insunits": int(document.GetVariable("INSUNITS")),
+        "text_style": str(document.GetVariable("TEXTSTYLE")),
+        "dim_style": str(document.ActiveDimStyle.Name),
+    }
+    expected = {
+        "created_from_template": True,
+        "modelspace_count": 0,
+        "missing_layers": [],
+        "insunits": 4,
+        "text_style": "AI_STANDARD",
+        "dim_style": "AI_STANDARD_DIM",
+    }
+    if result != expected:
+        raise RuntimeError(f"DWT round-trip mismatch: {result} != {expected}")
+    _retry_com(lambda: document.Close(False))
+    return result
+
+
 def _accept_tasks(
-    application: Any, store: SQLiteMemoryStore, drawing_path: Path
+    application: Any,
+    store: SQLiteMemoryStore,
+    drawing_path: Path,
+    template_path: Path,
 ) -> dict[str, Any]:
-    document = _retry_com(lambda: application.Documents.Add())
+    document = _retry_com(
+        lambda: application.Documents.Add(str(template_path.resolve()))
+    )
     adapter = _adapter(application, document)
-    _prepare_layers(document)
     _wait_document_ready(document)
     task_a = _run_guarded_task(adapter, store, _circle_plan("task-a", [0, 0, 0], 10))
     task_b = _run_guarded_task(adapter, store, _circle_plan("task-b", [40, 0, 0], 5))
     manager = TaskTrackingManager(store)
+    foreign_document = _retry_com(
+        lambda: application.Documents.Add(str(template_path.resolve()))
+    )
+    foreign_adapter = _adapter(application, foreign_document)
+    _wait_document_ready(foreign_document)
+    cross_drawing_error = ""
+    try:
+        manager.commit_preview_task(
+            foreign_adapter,
+            task_b["task_id"],
+            confirmed=True,
+        )
+    except PermissionError as exc:
+        cross_drawing_error = str(exc)
+    if "different drawing" not in cross_drawing_error:
+        raise RuntimeError(
+            "Cross-drawing task commit was not blocked by drawing identity"
+        )
+    cross_drawing_guard = {
+        "blocked": True,
+        "error": cross_drawing_error,
+        "foreign_modelspace_count": int(foreign_document.ModelSpace.Count),
+    }
+    _retry_com(lambda: foreign_document.Close(False))
     commit_manifest = manager.commit_preview_task(
         adapter, task_a["task_id"], confirmed=False
     )
@@ -376,6 +435,7 @@ def _accept_tasks(
         "drawing": str(drawing_path.resolve()),
         "task_a": task_a,
         "task_b": task_b,
+        "cross_drawing_guard": cross_drawing_guard,
         "commit_manifest": commit_manifest,
         "commit": commit,
         "revert_manifest": revert_manifest,
@@ -425,9 +485,12 @@ def main() -> int:
             }
         else:
             report["template"] = _save_template(application, args.template_target)
+        report["template"]["roundtrip"] = _verify_template_roundtrip(
+            application, args.template_target
+        )
         store = SQLiteMemoryStore(args.database)
         report["task_tracking"] = _accept_tasks(
-            application, store, args.acceptance_dwg
+            application, store, args.acceptance_dwg, args.template_target
         )
         report["success"] = True
         args.report.write_text(

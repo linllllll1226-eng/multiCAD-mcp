@@ -108,8 +108,17 @@ class FakeDocument:
     FullName = ""
     Path = ""
 
-    def __init__(self, entities: list[FakeEntity]):
+    def __init__(
+        self,
+        entities: list[FakeEntity],
+        *,
+        name: str = "Drawing1.dwg",
+        full_name: str = "",
+    ):
         """Index entities by handle and provide standard layers."""
+        self.Name = name
+        self.FullName = full_name
+        self.Path = full_name.rsplit("\\", 1)[0] if "\\" in full_name else ""
         self.objects = {entity.Handle: entity for entity in entities}
         self.Layers = FakeLayers(
             [
@@ -170,7 +179,21 @@ class FakeAdapter:
         return None
 
 
-def _metadata(task_id: str, *, approximate: bool = False) -> dict[str, Any]:
+class FailingTaskStore(SQLiteMemoryStore):
+    """Store double that fails the final task/entity transaction."""
+
+    def update_task_entities_and_status(self, *args, **kwargs):
+        """Simulate a SQLite commit failure after CAD objects changed."""
+        raise RuntimeError("simulated database failure")
+
+
+def _metadata(
+    task_id: str,
+    *,
+    approximate: bool = False,
+    drawing_name: str = "Drawing1.dwg",
+    drawing_full_name: str = "",
+) -> dict[str, Any]:
     return build_entity_provenance(
         task_id=task_id,
         execution_result_id=1,
@@ -180,6 +203,8 @@ def _metadata(task_id: str, *, approximate: bool = False) -> dict[str, Any]:
         ),
         confidence=0.5 if approximate else 1.0,
         approximate_reference=approximate,
+        drawing_name=drawing_name,
+        drawing_full_name=drawing_full_name,
     )
 
 
@@ -192,13 +217,18 @@ def _seed_task(
     status: str = "verified",
     approximate: bool = False,
 ) -> None:
-    metadata = _metadata(task_id, approximate=approximate)
+    metadata = _metadata(
+        task_id,
+        approximate=approximate,
+        drawing_name=adapter.document.Name,
+        drawing_full_name=adapter.document.FullName,
+    )
     write_entity_provenance(adapter, adapter.document, entity, metadata)
     store.create_ai_task(
         task_id=task_id,
         task_name=task_id,
-        drawing_name="Drawing1.dwg",
-        drawing_full_name="",
+        drawing_name=adapter.document.Name,
+        drawing_full_name=adapter.document.FullName,
         drawing_profile="general_2d",
         status=status,
         execution_result_id=1,
@@ -256,6 +286,121 @@ def test_executor_assigns_unique_task_provenance():
     metadata = read_entity_provenance(document.HandleToObject(result["handles"][0]))
     assert metadata["task_id"] == first_id
     assert metadata["drawing_profile"] == "general_2d"
+    assert metadata["drawing_name"] == "Drawing1.dwg"
+
+
+def test_long_xdata_payload_round_trips_across_chunks():
+    entity = FakeEntity("A1", "AI_PREVIEW_OUTLINE")
+    document = FakeDocument([entity])
+    adapter = FakeAdapter(document)
+    metadata = build_entity_provenance(
+        task_id="task-long",
+        execution_result_id=1,
+        drawing_profile="profile-" + ("x" * 900),
+        source_type="explicit_dimension",
+        confidence=1,
+        approximate_reference=False,
+        drawing_name=document.Name,
+    )
+    write_entity_provenance(adapter, document, entity, metadata)
+    assert entity.xdata is not None
+    assert len(entity.xdata[1]) > 3
+    assert read_entity_provenance(entity) == metadata
+
+
+def test_cross_drawing_commit_and_revert_are_blocked(tmp_path):
+    original = FakeEntity("A1", "AI_PREVIEW_OUTLINE")
+    original_document = FakeDocument(
+        [original],
+        name="part-a.dwg",
+        full_name=r"D:\drawings\part-a.dwg",
+    )
+    original_adapter = FakeAdapter(original_document)
+    store = SQLiteMemoryStore(tmp_path / "memory.db")
+    _seed_task(store, original_adapter, "task-a", original)
+
+    copied = FakeEntity("A1", "AI_PREVIEW_OUTLINE")
+    copied.xdata = original.xdata
+    other_adapter = FakeAdapter(
+        FakeDocument(
+            [copied],
+            name="part-b.dwg",
+            full_name=r"D:\drawings\part-b.dwg",
+        )
+    )
+    manager = TaskTrackingManager(store)
+    with pytest.raises(PermissionError, match="different drawing"):
+        manager.commit_preview_task(other_adapter, "task-a", confirmed=True)
+    with pytest.raises(PermissionError, match="different drawing"):
+        manager.revert_task(other_adapter, "task-a", confirmed=True)
+    assert copied.Layer == "AI_PREVIEW_OUTLINE"
+    assert store.get_ai_task("task-a")["status"] == "verified"
+
+
+def test_same_saved_drawing_path_is_case_insensitive(tmp_path):
+    entity = FakeEntity("A1", "AI_PREVIEW_OUTLINE")
+    adapter = FakeAdapter(
+        FakeDocument(
+            [entity],
+            name="PART-A.DWG",
+            full_name=r"d:\DRAWINGS\PART-A.DWG",
+        )
+    )
+    store = SQLiteMemoryStore(tmp_path / "memory.db")
+    _seed_task(store, adapter, "task-a", entity)
+    adapter.document.FullName = r"D:\drawings\part-a.dwg"
+    adapter.document.Name = "part-a.dwg"
+    result = TaskTrackingManager(store).commit_preview_task(
+        adapter, "task-a", confirmed=True
+    )
+    assert result["success"]
+
+
+def test_entity_provenance_from_other_drawing_is_blocked(tmp_path):
+    entity = FakeEntity("A1", "AI_PREVIEW_OUTLINE")
+    adapter = FakeAdapter(
+        FakeDocument(
+            [entity],
+            name="part-a.dwg",
+            full_name=r"D:\drawings\part-a.dwg",
+        )
+    )
+    store = SQLiteMemoryStore(tmp_path / "memory.db")
+    _seed_task(store, adapter, "task-a", entity)
+    foreign_metadata = _metadata(
+        "task-a",
+        drawing_name="part-b.dwg",
+        drawing_full_name=r"D:\drawings\part-b.dwg",
+    )
+    write_entity_provenance(adapter, adapter.document, entity, foreign_metadata)
+    with pytest.raises(PermissionError, match="provenance belongs"):
+        TaskTrackingManager(store).commit_preview_task(
+            adapter, "task-a", confirmed=True
+        )
+    assert entity.Layer == "AI_PREVIEW_OUTLINE"
+
+
+def test_task_list_marks_other_drawing_without_resolving_handles(tmp_path):
+    entity = FakeEntity("A1", "AI_PREVIEW_OUTLINE")
+    source = FakeAdapter(
+        FakeDocument(
+            [entity],
+            name="part-a.dwg",
+            full_name=r"D:\drawings\part-a.dwg",
+        )
+    )
+    store = SQLiteMemoryStore(tmp_path / "memory.db")
+    _seed_task(store, source, "task-a", entity)
+    other = FakeAdapter(
+        FakeDocument(
+            [],
+            name="part-b.dwg",
+            full_name=r"D:\drawings\part-b.dwg",
+        )
+    )
+    task = TaskTrackingManager(store).list_tasks(other)["tasks"][0]
+    assert task["active_drawing_match"] is False
+    assert task["active_entity_count"] == 0
 
 
 def test_commit_requires_verified_task_and_changes_only_layer(tmp_path):
@@ -327,6 +472,40 @@ def test_committed_revert_requires_extra_confirmation(tmp_path):
     assert entity.Layer == "OUTLINE"
 
 
+def test_committed_revert_with_extra_confirmation_is_idempotent(tmp_path):
+    entity = FakeEntity("A1", "OUTLINE")
+    adapter = FakeAdapter(FakeDocument([entity]))
+    store = SQLiteMemoryStore(tmp_path / "memory.db")
+    _seed_task(store, adapter, "task-a", entity, status="committed")
+    manager = TaskTrackingManager(store)
+    result = manager.revert_task(
+        adapter,
+        "task-a",
+        confirmed=True,
+        allow_committed=True,
+    )
+    repeated = manager.revert_task(
+        adapter,
+        "task-a",
+        confirmed=True,
+        allow_committed=True,
+    )
+    assert result["success"] and entity.Layer == REVERT_LAYER
+    assert repeated["already_reverted"] is True
+
+
+def test_repeated_commit_is_idempotent(tmp_path):
+    entity = FakeEntity("A1", "AI_PREVIEW_OUTLINE")
+    adapter = FakeAdapter(FakeDocument([entity]))
+    store = SQLiteMemoryStore(tmp_path / "memory.db")
+    _seed_task(store, adapter, "task-a", entity)
+    manager = TaskTrackingManager(store)
+    first = manager.commit_preview_task(adapter, "task-a", confirmed=True)
+    repeated = manager.commit_preview_task(adapter, "task-a", confirmed=True)
+    assert first["success"] and entity.Layer == "OUTLINE"
+    assert repeated["already_committed"] is True
+
+
 def test_failed_verified_task_can_still_be_safely_reverted(tmp_path):
     entity = FakeEntity("A1", "AI_PREVIEW_OUTLINE")
     adapter = FakeAdapter(FakeDocument([entity]))
@@ -369,6 +548,21 @@ def test_commit_failure_restores_previously_changed_entities(tmp_path):
         )
     assert first.Layer == "AI_PREVIEW_OUTLINE"
     assert second.Layer == "AI_PREVIEW_OUTLINE"
+    assert store.get_ai_task("task-a")["status"] == "verified"
+
+
+def test_database_failure_restores_cad_layer_and_xdata(tmp_path):
+    entity = FakeEntity("A1", "AI_PREVIEW_OUTLINE")
+    adapter = FakeAdapter(FakeDocument([entity]))
+    store = FailingTaskStore(tmp_path / "memory.db")
+    _seed_task(store, adapter, "task-a", entity)
+    before_metadata = read_entity_provenance(entity)
+    with pytest.raises(RuntimeError, match="simulated database failure"):
+        TaskTrackingManager(store).commit_preview_task(
+            adapter, "task-a", confirmed=True
+        )
+    assert entity.Layer == "AI_PREVIEW_OUTLINE"
+    assert read_entity_provenance(entity) == before_metadata
     assert store.get_ai_task("task-a")["status"] == "verified"
 
 

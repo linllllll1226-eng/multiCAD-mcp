@@ -6,7 +6,11 @@ from contextlib import contextmanager
 from typing import Any, Iterator
 
 from .models import DrawingPlan, EntityPlan
-from .provenance import build_entity_provenance, write_entity_provenance
+from .provenance import (
+    build_entity_provenance,
+    document_identity,
+    write_entity_provenance,
+)
 from .validator import PlanValidator
 
 
@@ -75,6 +79,7 @@ class PlanExecutor:
         entity_records: list[dict[str, Any]] = []
         created_handles: list[str] = []
         document = adapter._get_document("cad_execute_plan")
+        identity = document_identity(document)
         rolled_back = False
         with undo_group(adapter):
             for index, entity in enumerate(plan.entities):
@@ -100,6 +105,8 @@ class PlanExecutor:
                             approximate_reference=(
                                 entity.dimension_source == "approximate_reference"
                             ),
+                            drawing_name=identity["drawing_name"],
+                            drawing_full_name=identity["drawing_full_name"],
                         )
                         write_entity_provenance(
                             adapter, document, cad_object, metadata

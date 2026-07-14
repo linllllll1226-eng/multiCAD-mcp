@@ -103,6 +103,8 @@ def build_entity_provenance(
     source_type: str,
     confidence: float,
     approximate_reference: bool,
+    drawing_name: str = "",
+    drawing_full_name: str = "",
     status: str = "preview",
 ) -> dict[str, Any]:
     """Build the required metadata for a newly created AI entity."""
@@ -115,5 +117,7 @@ def build_entity_provenance(
         "confidence": float(confidence),
         "approximate_reference": bool(approximate_reference),
         "execution_result_id": int(execution_result_id),
+        "drawing_name": str(drawing_name or ""),
+        "drawing_full_name": str(drawing_full_name or ""),
         "status": status,
     }

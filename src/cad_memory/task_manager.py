@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import ntpath
 from typing import Any
 
 from .database import SQLiteMemoryStore
 from .executor import undo_group
-from .provenance import read_entity_provenance, utc_now, write_entity_provenance
+from .provenance import (
+    document_identity,
+    read_entity_provenance,
+    utc_now,
+    write_entity_provenance,
+)
 from .verifier import read_entity_state
 
 DEFAULT_FORMAL_LAYER_MAP = {
@@ -50,6 +56,39 @@ def _ensure_revert_layer(document: Any) -> Any:
     return layer
 
 
+def _normalized_windows_path(value: str) -> str:
+    return ntpath.normcase(ntpath.normpath(str(value or "").strip()))
+
+
+def _identity_matches(record: dict[str, Any], document: Any) -> bool:
+    """Require a task/entity identity to match the active AutoCAD document."""
+    current = document_identity(document)
+    recorded_full = str(record.get("drawing_full_name") or "").strip()
+    current_full = str(current.get("drawing_full_name") or "").strip()
+    if recorded_full:
+        return bool(current_full) and _normalized_windows_path(
+            recorded_full
+        ) == _normalized_windows_path(current_full)
+    recorded_name = str(record.get("drawing_name") or "").strip()
+    current_name = str(current.get("drawing_name") or "").strip()
+    return not recorded_name or recorded_name.casefold() == current_name.casefold()
+
+
+def _assert_document_identity(
+    record: dict[str, Any], document: Any, *, source: str
+) -> None:
+    if not _identity_matches(record, document):
+        current = document_identity(document)
+        recorded_label = record.get("drawing_full_name") or record.get(
+            "drawing_name"
+        )
+        active_label = current["drawing_full_name"] or current["drawing_name"]
+        raise PermissionError(
+            f"{source} belongs to a different drawing: "
+            f"recorded={recorded_label!r}, active={active_label!r}"
+        )
+
+
 class TaskTrackingManager:
     """Operate only on entities carrying a matching assistant task identifier."""
 
@@ -65,14 +104,17 @@ class TaskTrackingManager:
         tasks = self.store.list_ai_tasks(status=status, limit=limit)
         for task in tasks:
             active = 0
-            for row in self.store.get_ai_task_entities(task["task_id"]):
-                try:
-                    entity = document.HandleToObject(row["handle"])
-                    metadata = read_entity_provenance(entity)
-                    if metadata and metadata.get("task_id") == task["task_id"]:
-                        active += 1
-                except Exception:
-                    pass
+            drawing_match = _identity_matches(task, document)
+            if drawing_match:
+                for row in self.store.get_ai_task_entities(task["task_id"]):
+                    try:
+                        entity = document.HandleToObject(row["handle"])
+                        metadata = read_entity_provenance(entity)
+                        if metadata and metadata.get("task_id") == task["task_id"]:
+                            active += 1
+                    except Exception:
+                        pass
+            task["active_drawing_match"] = drawing_match
             task["recorded_entity_count"] = len(
                 self.store.get_ai_task_entities(task["task_id"])
             )
@@ -83,6 +125,7 @@ class TaskTrackingManager:
         """Read only active entities whose XData proves task ownership."""
         task = self.store.get_ai_task(task_id)
         document = adapter._get_document("cad_get_task_entities")
+        _assert_document_identity(task, document, source=f"Task {task_id}")
         entities = []
         missing = []
         for row in task["entities"]:
@@ -134,8 +177,9 @@ class TaskTrackingManager:
                 "task_status": task["status"],
             }
         document = adapter._get_document("cad_commit_preview_task")
+        _assert_document_identity(task, document, source=f"Task {task_id}")
         mapping = {**DEFAULT_FORMAL_LAYER_MAP, **(layer_mapping or {})}
-        owned = self._load_owned_entities(document, task_id)
+        owned = self._load_owned_entities(document, task)
         manifest = []
         for row, entity, metadata in owned:
             source_layer = str(entity.Layer)
@@ -233,7 +277,8 @@ class TaskTrackingManager:
                 "reason": "Committed tasks require allow_committed=true",
             }
         document = adapter._get_document("cad_revert_ai_task")
-        owned = self._load_owned_entities(document, task_id)
+        _assert_document_identity(task, document, source=f"Task {task_id}")
+        owned = self._load_owned_entities(document, task)
         manifest = [
             {
                 "handle": row["handle"],
@@ -304,8 +349,9 @@ class TaskTrackingManager:
         }
 
     def _load_owned_entities(
-        self, document: Any, task_id: str
+        self, document: Any, task: dict[str, Any]
     ) -> list[tuple[dict[str, Any], Any, dict[str, Any]]]:
+        task_id = str(task["task_id"])
         rows = [
             row
             for row in self.store.get_ai_task_entities(task_id)
@@ -320,6 +366,12 @@ class TaskTrackingManager:
             if not metadata or metadata.get("task_id") != task_id:
                 raise PermissionError(
                     f"Entity {row['handle']} is not proven to belong to {task_id}"
+                )
+            if metadata.get("drawing_name") or metadata.get("drawing_full_name"):
+                _assert_document_identity(
+                    metadata,
+                    document,
+                    source=f"Entity {row['handle']} provenance",
                 )
             result.append((row, entity, metadata))
         return result

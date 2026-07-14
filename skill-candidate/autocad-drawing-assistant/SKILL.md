@@ -12,6 +12,7 @@ Use the currently connected `multiCAD-mcp` CAD tools to work on the active AutoC
 - Confirm that `multiCAD-mcp` can reach the active AutoCAD document before planning any CAD operation.
 - Diagnose an unavailable MCP or AutoCAD COM connection before drawing.
 - Operate only on the active drawing named in the preflight report.
+- Before reading task entities, committing, or reverting, require the task's recorded drawing name/full path and its XData drawing identity to match the active document. Stop on any mismatch; never treat a same-numbered handle in another DWG as the same object.
 - Do not save, overwrite, close, or replace a DWG unless the user explicitly authorizes that action.
 - Use CAD tools exposed through `multiCAD-mcp` for drawing and editing. Do not substitute arbitrary operating-system or shell commands for CAD operations.
 
