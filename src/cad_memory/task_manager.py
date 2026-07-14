@@ -181,6 +181,7 @@ class TaskTrackingManager:
         mapping = {**DEFAULT_FORMAL_LAYER_MAP, **(layer_mapping or {})}
         owned = self._load_owned_entities(document, task)
         manifest = []
+        missing_layers: set[str] = set()
         for row, entity, metadata in owned:
             source_layer = str(entity.Layer)
             target_layer = mapping.get(source_layer)
@@ -190,7 +191,10 @@ class TaskTrackingManager:
                 raise PermissionError(
                     "Approximate reference geometry cannot enter a formal layer"
                 )
-            _get_layer(document, target_layer)
+            try:
+                _get_layer(document, target_layer)
+            except ValueError:
+                missing_layers.add(target_layer)
             manifest.append(
                 {
                     "handle": row["handle"],
@@ -207,6 +211,18 @@ class TaskTrackingManager:
                 "task_id": task_id,
                 "object_count": len(manifest),
                 "objects": manifest,
+                "missing_layers": sorted(missing_layers),
+                "ready_to_commit": not missing_layers,
+            }
+        if missing_layers:
+            return {
+                "success": False,
+                "blocked": True,
+                "reason": "Required formal layers do not exist",
+                "task_id": task_id,
+                "object_count": len(manifest),
+                "objects": manifest,
+                "missing_layers": sorted(missing_layers),
             }
         snapshots = self._snapshot(owned)
         changed: list[tuple[dict[str, Any], Any, dict[str, Any]]] = []

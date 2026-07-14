@@ -423,6 +423,27 @@ def test_commit_requires_verified_task_and_changes_only_layer(tmp_path):
     assert store.get_ai_task("task-a")["status"] == "committed"
 
 
+def test_commit_manifest_reports_missing_layers_without_modifying_entities(tmp_path):
+    entity = FakeEntity("A1", "AI_PREVIEW_OUTLINE")
+    document = FakeDocument([entity])
+    del document.Layers.items["OUTLINE"]
+    adapter = FakeAdapter(document)
+    store = SQLiteMemoryStore(tmp_path / "memory.db")
+    _seed_task(store, adapter, "task-a", entity, status="verified")
+    manager = TaskTrackingManager(store)
+
+    preview = manager.commit_preview_task(adapter, "task-a", confirmed=False)
+    assert preview["requires_confirmation"]
+    assert preview["missing_layers"] == ["OUTLINE"]
+    assert preview["ready_to_commit"] is False
+    assert entity.Layer == "AI_PREVIEW_OUTLINE"
+
+    blocked = manager.commit_preview_task(adapter, "task-a", confirmed=True)
+    assert blocked["blocked"]
+    assert blocked["missing_layers"] == ["OUTLINE"]
+    assert entity.Layer == "AI_PREVIEW_OUTLINE"
+
+
 def test_approximate_reference_never_enters_formal_layer(tmp_path):
     entity = FakeEntity("U1", "AI_UNCERTAIN")
     adapter = FakeAdapter(FakeDocument([entity]))
