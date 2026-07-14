@@ -36,6 +36,8 @@ The Python standard-library `sqlite3` module creates these tables:
 - `corrections`
 - `drawing_profiles`
 - `execution_results`
+- `ai_tasks`
+- `ai_task_entities`
 
 Database files and SQLite sidecar files are ignored by Git. Do not copy, commit,
 sync, or upload the `data` directory. Override the location only with the local
@@ -128,8 +130,9 @@ allow flags.
 5. Call `cad_plan_validate`. It checks the active AutoCAD layer list and blocks
    invalid plans.
 6. Call `cad_execute_plan`. It validates again immediately before writing and
-   returns created handles.
-7. Call `cad_verify_execution` with the same plan and returned handles.
+   returns created handles and a unique `task_id`. Created objects receive
+   `CODEX_CAD_AI` XData.
+7. Call `cad_verify_execution` with the same plan, handles, and `task_id`.
 8. Report the comparison rows: target, actual, error, and pass/fail.
 
 Validation covers missing coordinates or units, nonpositive dimensions, missing
@@ -203,5 +206,7 @@ changed. The initial implementation does not change the active Codex config.
   auto-executed by the guarded executor.
 - Existing legacy write tools remain available for backward compatibility; the
   safety guarantees apply when clients use the structured `cad_*` workflow.
+- Formal commit changes only verified task layers. Task withdrawal is reversible
+  isolation on the hidden `AI_REVERTED` layer, not hard deletion.
 - COM property availability can vary between CAD products and entity types; missing
   properties appear as failed verification rows rather than inferred values.

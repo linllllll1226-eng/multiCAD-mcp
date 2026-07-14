@@ -15,7 +15,7 @@ def test_start_script_checks_stable_entry_and_never_opens_or_saves_dwg():
     assert ".Save()" not in text
 
 
-def test_template_initializer_is_dry_run_by_default_and_does_not_save():
+def test_template_initializer_is_dry_run_by_default_and_guards_template_save():
     text = (ROOT / "scripts" / "Initialize-AI-DrawingTemplate.ps1").read_text(
         encoding="utf-8"
     )
@@ -24,7 +24,10 @@ def test_template_initializer_is_dry_run_by_default_and_does_not_save():
     assert "AI_UNCERTAIN" in text
     assert "CENTER2" in text
     assert "HIDDEN2" in text
-    assert "SaveAs(" not in text
+    assert "SaveTemplate" in text
+    assert "SaveAs($TemplateTarget, 66)" in text
+    assert "Refusing to overwrite existing template" in text
+    assert "SaveTemplate -and -not $ApplyToBlankDrawing" in text
 
 
 def test_profile_sync_reuses_existing_mcp_tools():
@@ -32,3 +35,17 @@ def test_profile_sync_reuses_existing_mcp_tools():
     assert '"cad_save_drawing_profile"' in text
     assert '"cad_load_drawing_profile"' in text
     assert "--apply" in text
+
+
+def test_task_acceptance_is_isolated_guarded_and_non_overwriting():
+    text = (
+        ROOT / "scripts" / "Run-CAD-Task-Tracking-Acceptance.py"
+    ).read_text(encoding="utf-8")
+    assert "DispatchEx(\"AutoCAD.Application.24.1\")" in text
+    assert "PlanValidator().validate" in text
+    assert "PlanExecutor().execute" in text
+    assert "PostExecutionVerifier().verify" in text
+    assert "commit_preview_task" in text
+    assert "revert_task" in text
+    assert "Refusing to overwrite" in text
+    assert "ac2018_Template" in text

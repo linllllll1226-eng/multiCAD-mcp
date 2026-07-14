@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from typing import Any, Iterator
 
 from .models import DrawingPlan, EntityPlan
+from .provenance import build_entity_provenance, write_entity_provenance
 from .validator import PlanValidator
 
 
@@ -50,7 +51,14 @@ class PlanExecutor:
         """Initialize with an optional reusable plan validator."""
         self.validator = validator or PlanValidator()
 
-    def execute(self, adapter: Any, plan: DrawingPlan) -> dict[str, Any]:
+    def execute(
+        self,
+        adapter: Any,
+        plan: DrawingPlan,
+        *,
+        task_id: str | None = None,
+        execution_result_id: int | None = None,
+    ) -> dict[str, Any]:
         """Validate and execute a plan using the supplied CAD adapter."""
         layers = adapter.list_layers()
         report = self.validator.validate(plan, available_layers=layers)
@@ -64,31 +72,110 @@ class PlanExecutor:
             }
 
         results: list[dict[str, Any]] = []
+        entity_records: list[dict[str, Any]] = []
+        created_handles: list[str] = []
+        document = adapter._get_document("cad_execute_plan")
+        rolled_back = False
         with undo_group(adapter):
             for index, entity in enumerate(plan.entities):
+                handle: str | None = None
                 try:
                     handle = self._execute_entity(adapter, entity)
-                    results.append({"index": index, "success": True, "handle": handle})
+                    owned = entity.operation == "create"
+                    metadata: dict[str, Any] = {}
+                    cad_object = document.HandleToObject(handle)
+                    if owned:
+                        created_handles.append(handle)
+                    if task_id and owned:
+                        if execution_result_id is None:
+                            raise ValueError(
+                                "execution_result_id is required for task provenance"
+                            )
+                        metadata = build_entity_provenance(
+                            task_id=task_id,
+                            execution_result_id=execution_result_id,
+                            drawing_profile=plan.drawing_profile or "",
+                            source_type=entity.dimension_source,
+                            confidence=entity.confidence,
+                            approximate_reference=(
+                                entity.dimension_source == "approximate_reference"
+                            ),
+                        )
+                        write_entity_provenance(
+                            adapter, document, cad_object, metadata
+                        )
+                    results.append(
+                        {
+                            "index": index,
+                            "success": True,
+                            "handle": handle,
+                            "owned": owned,
+                        }
+                    )
+                    entity_records.append(
+                        {
+                            "handle": handle,
+                            "object_type": str(
+                                getattr(cad_object, "ObjectName", entity.entity_type)
+                            ),
+                            "operation": entity.operation,
+                            "owned": owned,
+                            "preview_layer": entity.layer if owned else "",
+                            "current_layer": str(
+                                getattr(cad_object, "Layer", entity.layer)
+                            ),
+                            "formal_layer": "",
+                            "source_type": entity.dimension_source,
+                            "confidence": entity.confidence,
+                            "approximate_reference": (
+                                entity.dimension_source == "approximate_reference"
+                            ),
+                            "metadata": metadata,
+                        }
+                    )
                 except Exception as exc:
                     results.append(
                         {"index": index, "success": False, "error": str(exc)}
                     )
+                    if handle and entity.operation == "create":
+                        created_handles.append(handle)
+                    rolled_back = self._rollback_created(document, created_handles)
                     break
 
         try:
             adapter.refresh_view()
         except Exception:
             pass
-        handles = [result["handle"] for result in results if result.get("success")]
+        success = len(results) == len(plan.entities) and all(
+            result.get("success") for result in results
+        )
+        handles = (
+            [result["handle"] for result in results if result.get("success")]
+            if success
+            else []
+        )
         return {
-            "success": len(results) == len(plan.entities)
-            and all(result.get("success") for result in results),
+            "success": success,
             "blocked": False,
             "validation": report.to_dict(),
             "handles": handles,
             "results": results,
+            "task_id": task_id,
+            "entity_records": entity_records if success else [],
+            "rolled_back": rolled_back,
             "undo_group_requested": True,
         }
+
+    @staticmethod
+    def _rollback_created(document: Any, handles: list[str]) -> bool:
+        """Delete only objects newly created by the failed execution attempt."""
+        rollback_ok = True
+        for handle in reversed(list(dict.fromkeys(handles))):
+            try:
+                document.HandleToObject(handle).Delete()
+            except Exception:
+                rollback_ok = False
+        return rollback_ok
 
     def _execute_entity(self, adapter: Any, entity: EntityPlan) -> str:
         if entity.operation == "layout_only":

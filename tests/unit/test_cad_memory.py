@@ -54,7 +54,13 @@ def test_required_schema_exists(tmp_path):
                 "SELECT name FROM sqlite_master WHERE type='table'"
             ).fetchall()
         }
-    assert {"corrections", "drawing_profiles", "execution_results"} <= names
+    assert {
+        "corrections",
+        "drawing_profiles",
+        "execution_results",
+        "ai_tasks",
+        "ai_task_entities",
+    } <= names
 
 
 def test_required_schema_columns_exist(tmp_path):
@@ -85,6 +91,34 @@ def test_required_schema_columns_exist(tmp_path):
             "actual_data",
             "passed",
             "errors",
+            "created_at",
+        },
+        "ai_tasks": {
+            "task_id",
+            "task_name",
+            "drawing_name",
+            "drawing_full_name",
+            "drawing_profile",
+            "status",
+            "execution_result_id",
+            "plan_data",
+            "verification_data",
+            "created_at",
+            "updated_at",
+        },
+        "ai_task_entities": {
+            "task_id",
+            "handle",
+            "object_type",
+            "operation",
+            "owned",
+            "preview_layer",
+            "current_layer",
+            "formal_layer",
+            "source_type",
+            "confidence",
+            "approximate_reference",
+            "metadata",
             "created_at",
         },
     }

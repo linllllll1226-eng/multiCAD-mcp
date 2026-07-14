@@ -52,7 +52,23 @@ The initializer prepares these layers:
 - `OUTLINE`, `CENTER`, `HIDDEN`, `HATCH`, `DIM`, `TEXT`;
 - `AI_PREVIEW_OUTLINE`, `AI_PREVIEW_CENTER`, `AI_PREVIEW_HIDDEN`, `AI_PREVIEW_HATCH`, `AI_PREVIEW_DIM`, `AI_UNCERTAIN`.
 
-It also loads `CENTER2` and `HIDDEN2`, creates `AI_STANDARD`, prepares `AI_STANDARD_DIM`, and sets an initial text height of 3.5 mm. It does not create geometry or save a file. After visual review and a separate confirmation, save manually as `D:\AI\CAD_Templates\AI_Drawing_Template.dwt`.
+It also loads `CENTER2` and `HIDDEN2`, creates `AI_STANDARD`, prepares `AI_STANDARD_DIM`, sets millimetres and an initial text height of 3.5 mm, and configures model/paper-space linetype scaling. It does not create geometry.
+
+Apply settings for review without saving:
+
+```powershell
+& '.\scripts\Initialize-AI-DrawingTemplate.ps1' -ApplyToBlankDrawing
+```
+
+Only after reviewing the empty unsaved drawing, save a new template with:
+
+```powershell
+& '.\scripts\Initialize-AI-DrawingTemplate.ps1' `
+  -ApplyToBlankDrawing -SaveTemplate
+```
+
+The script refuses nonempty or saved drawings and refuses to overwrite an existing
+`D:\AI\CAD_Templates\AI_Drawing_Template.dwt`.
 
 ## Formal-write backup
 
@@ -72,7 +88,10 @@ The candidate Skill routes analysis, preview, formal commit, inspection, and tas
 2. `cad_execute_plan`;
 3. `cad_verify_execution`.
 
-The accepted core currently supports creation and dimension layout, but intentionally rejects general modify/delete plans. Therefore a formal preview-to-layer move or task-scoped undo must stop safely when the core cannot prove the target operation. The Skill must not fall back to legacy entity modification or a generic undo that could affect user work.
+The task-tracking extension provides a verified preview-to-formal layer commit and
+a reversible task-scoped withdrawal to `AI_REVERTED`. Both require an exact
+`task_id`, an inspection manifest, and explicit confirmation. The Skill must not
+fall back to legacy entity modification, deletion, or generic Undo.
 
 ## Rollback
 
