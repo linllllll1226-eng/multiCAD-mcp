@@ -1,0 +1,4 @@
+interface:
+  display_name: "AutoCAD Drawing Assistant"
+  short_description: "Safe AutoCAD intent shortcuts and verified writes"
+  default_prompt: "Use $autocad-drawing-assistant to analyze a drawing or run a preview through the guarded validation workflow."
