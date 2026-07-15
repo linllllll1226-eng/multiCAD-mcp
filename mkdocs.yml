@@ -97,4 +97,5 @@ nav:
       - Core: api/core.md
   - Reference: 05-REFERENCE.md
   - Troubleshooting: 04-TROUBLESHOOTING.md
+  - Security Audit: SECURITY_AUDIT.md
   - Changelog: 03-CHANGELOG.md

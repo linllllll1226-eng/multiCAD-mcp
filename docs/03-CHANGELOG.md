@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refreshed the README and vision documentation to describe the current guarded workflow.
 - Upgraded CI from partial linting to full Ruff checks and formatting validation.
 - Adopted a 100-character line limit and Google-style docstring convention across the codebase.
+- Refreshed `uv.lock` and raised minimum versions for security-sensitive runtime dependencies.
 
 ### Fixed
 
@@ -30,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - OCR remains read-only and local; it never connects to or writes AutoCAD.
 - Vector PDF text remains preferred, and uncertain OCR evidence still requires guarded planning.
+- Added `SECURITY.md`, weekly uv and GitHub Actions Dependabot updates, CodeQL, and a dedicated
+  Bandit plus pip-audit workflow.
+- Reviewed and documented all 10 Bandit B608 dynamic-SQL findings; identifiers and fragments are
+  fixed or allowlisted and user values remain parameter-bound.
 
 ## [0.3.0] - 2026-07-15
 

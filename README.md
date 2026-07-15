@@ -8,7 +8,7 @@
 
 - **Primary verified target:** AutoCAD 2022 on Windows (`COM 24.1`).
 - **MCP surface:** 23 tools: 7 upstream unified CAD tools plus 16 guarded workflow, memory, task, and vision tools.
-- **Tests:** 251 automated tests at the v0.4 integration point.
+- **Tests:** 252 automated tests at the v0.4 security release gate.
 - **Quality gate:** full Ruff lint/format checks and release-hygiene validation.
 - **Transport:** local STDIO; no network listener is required for Codex.
 - **Safe entry point:** `src/server_memory.py`.
@@ -115,6 +115,10 @@ Convenience intents supported by the Skill include `分析这张图`, `开始预
 - Arbitrary export paths are disabled by default.
 - The one-click launcher does not open, save, or modify a DWG automatically.
 - Use a blank drawing for acceptance tests and a saved copy for real work.
+
+Security reports should follow [`SECURITY.md`](SECURITY.md), not public issues containing exploit
+details or private drawings. The reproducible release checks and reviewed Bandit SQL findings are
+documented in [`docs/SECURITY_AUDIT.md`](docs/SECURITY_AUDIT.md).
 
 ## Tool groups
 

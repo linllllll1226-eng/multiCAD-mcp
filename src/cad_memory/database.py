@@ -231,10 +231,13 @@ class SQLiteMemoryStore:
             clauses.append("confirmed_by_user = 1")
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         params.append(limit)
+        # The WHERE fragments above are fixed literals; all user values stay parameter-bound.
+        query_sql = (
+            f"SELECT * FROM corrections{where} "  # nosec B608
+            "ORDER BY id DESC LIMIT ?"
+        )
         with self._lock, self._connection() as connection:
-            rows = connection.execute(
-                f"SELECT * FROM corrections{where} ORDER BY id DESC LIMIT ?", params
-            ).fetchall()
+            rows = connection.execute(query_sql, params).fetchall()
         return [_decode_json_fields(dict(row)) for row in rows]
 
     def list_records(
@@ -248,19 +251,22 @@ class SQLiteMemoryStore:
             if table == "corrections" and not include_unconfirmed
             else ""
         )
+        # table is restricted by _validate_table and where is a fixed literal.
+        query_sql = (
+            f"SELECT * FROM {table}{where} "  # nosec B608
+            "ORDER BY id DESC LIMIT ?"
+        )
         with self._lock, self._connection() as connection:
-            rows = connection.execute(
-                f"SELECT * FROM {table}{where} ORDER BY id DESC LIMIT ?", (limit,)
-            ).fetchall()
+            rows = connection.execute(query_sql, (limit,)).fetchall()
         return [_decode_json_fields(dict(row)) for row in rows]
 
     def get_record(self, table: str, record_id: int) -> dict[str, Any]:
         """Get one record by table and integer ID."""
         table = self._validate_table(table)
+        # table is restricted by _validate_table; the record ID is parameter-bound.
+        query_sql = f"SELECT * FROM {table} WHERE id = ?"  # nosec B608
         with self._lock, self._connection() as connection:
-            row = connection.execute(
-                f"SELECT * FROM {table} WHERE id = ?", (int(record_id),)
-            ).fetchone()
+            row = connection.execute(query_sql, (int(record_id),)).fetchone()
         if row is None:
             raise KeyError(f"No {table} record with id={record_id}")
         return _decode_json_fields(dict(row))
@@ -270,8 +276,10 @@ class SQLiteMemoryStore:
         table = self._validate_table(table)
         if not confirmed:
             raise PermissionError("Deletion requires confirmed=true")
+        # table is restricted by _validate_table; the record ID is parameter-bound.
+        query_sql = f"DELETE FROM {table} WHERE id = ?"  # nosec B608
         with self._lock, self._connection() as connection:
-            cursor = connection.execute(f"DELETE FROM {table} WHERE id = ?", (int(record_id),))
+            cursor = connection.execute(query_sql, (int(record_id),))
             return cursor.rowcount == 1
 
     def save_drawing_profile(
@@ -430,11 +438,13 @@ class SQLiteMemoryStore:
             assignments.append("execution_result_id = ?")
             params.append(int(execution_result_id))
         params.append(task_id)
+        # assignments contains only the hard-coded column names above; values are parameter-bound.
+        query_sql = (
+            f"UPDATE ai_tasks SET {', '.join(assignments)} "  # nosec B608
+            "WHERE task_id = ?"
+        )
         with self._lock, self._connection() as connection:
-            cursor = connection.execute(
-                f"UPDATE ai_tasks SET {', '.join(assignments)} WHERE task_id = ?",
-                params,
-            )
+            cursor = connection.execute(query_sql, params)
             if cursor.rowcount != 1:
                 raise KeyError(f"AI task not found: {task_id}")
         return self.get_ai_task(task_id)
@@ -478,14 +488,13 @@ class SQLiteMemoryStore:
             drawing_profile, status, execution_result_id, created_at, updated_at
         """
         )
+        # columns and where are selected exclusively from the fixed literals above.
+        query_sql = (
+            f"SELECT {columns} FROM ai_tasks{where} "  # nosec B608
+            "ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        )
         with self._lock, self._connection() as connection:
-            rows = connection.execute(
-                f"""
-                SELECT {columns} FROM ai_tasks{where}
-                ORDER BY created_at DESC LIMIT ? OFFSET ?
-                """,
-                params,
-            ).fetchall()
+            rows = connection.execute(query_sql, params).fetchall()
         return [_decode_json_fields(dict(row)) for row in rows]
 
     def add_ai_task_entities(
@@ -546,15 +555,13 @@ class SQLiteMemoryStore:
         if limit is not None:
             pagination = " LIMIT ? OFFSET ?"
             params.extend([max(1, min(int(limit), 500)), offset])
+        # pagination is either empty or the fixed LIMIT/OFFSET fragment above.
+        query_sql = (
+            f"SELECT * FROM ai_task_entities "  # nosec B608
+            f"WHERE task_id = ? ORDER BY id{pagination}"
+        )
         with self._lock, self._connection() as connection:
-            rows = connection.execute(
-                f"""
-                SELECT * FROM ai_task_entities
-                WHERE task_id = ? ORDER BY id
-                {pagination}
-                """,
-                params,
-            ).fetchall()
+            rows = connection.execute(query_sql, params).fetchall()
         return [_decode_json_fields(dict(row)) for row in rows]
 
     def count_ai_task_entities(self, task_id: str) -> int:
@@ -585,14 +592,13 @@ class SQLiteMemoryStore:
             assignments.append("metadata = ?")
             params.append(_json(metadata))
         params.extend([task_id, handle])
+        # assignments contains only the hard-coded column names above; values are parameter-bound.
+        query_sql = (
+            f"UPDATE ai_task_entities SET {', '.join(assignments)} "  # nosec B608
+            "WHERE task_id = ? AND handle = ?"
+        )
         with self._lock, self._connection() as connection:
-            cursor = connection.execute(
-                f"""
-                UPDATE ai_task_entities SET {", ".join(assignments)}
-                WHERE task_id = ? AND handle = ?
-                """,
-                params,
-            )
+            cursor = connection.execute(query_sql, params)
             if cursor.rowcount != 1:
                 raise KeyError(f"Task entity not found: {task_id}/{handle}")
             row = connection.execute(
@@ -624,13 +630,12 @@ class SQLiteMemoryStore:
                     assignments.append("metadata = ?")
                     params.append(_json(update["metadata"]))
                 params.extend([task_id, update["handle"]])
-                cursor = connection.execute(
-                    f"""
-                    UPDATE ai_task_entities SET {", ".join(assignments)}
-                    WHERE task_id = ? AND handle = ?
-                    """,
-                    params,
+                # assignments contains only the hard-coded column names above.
+                query_sql = (
+                    f"UPDATE ai_task_entities SET {', '.join(assignments)} "  # nosec B608
+                    "WHERE task_id = ? AND handle = ?"
                 )
+                cursor = connection.execute(query_sql, params)
                 if cursor.rowcount != 1:
                     raise KeyError(f"Task entity not found: {task_id}/{update['handle']}")
             cursor = connection.execute(
@@ -649,17 +654,15 @@ class SQLiteMemoryStore:
         if not handles:
             return None
         placeholders = ",".join("?" for _ in handles)
+        # placeholders contains only generated '?' markers; every handle remains parameter-bound.
+        query_sql = (
+            "SELECT task_id, COUNT(DISTINCT handle) AS matched "
+            "FROM ai_task_entities "
+            f"WHERE handle IN ({placeholders}) "  # nosec B608
+            "GROUP BY task_id HAVING matched = ?"
+        )
         with self._lock, self._connection() as connection:
-            rows = connection.execute(
-                f"""
-                SELECT task_id, COUNT(DISTINCT handle) AS matched
-                FROM ai_task_entities
-                WHERE handle IN ({placeholders})
-                GROUP BY task_id
-                HAVING matched = ?
-                """,
-                [*handles, len(set(handles))],
-            ).fetchall()
+            rows = connection.execute(query_sql, [*handles, len(set(handles))]).fetchall()
         if len(rows) != 1:
             return None
         return str(rows[0]["task_id"])

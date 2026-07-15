@@ -1,5 +1,7 @@
 """Unit tests for the local SQLite CAD memory."""
 
+import pytest
+
 from cad_memory.database import SQLiteMemoryStore
 
 
@@ -126,3 +128,20 @@ def test_required_schema_columns_exist(tmp_path):
         for table, required_columns in expected.items():
             actual_columns = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
             assert required_columns <= actual_columns
+
+
+def test_dynamic_sql_rejects_table_injection_and_binds_search_values(tmp_path):
+    """Document the invariants behind the reviewed Bandit B608 suppressions."""
+    store = SQLiteMemoryStore(tmp_path / "cad_memory.db")
+    store.add_correction(
+        category="dimension'; DROP TABLE corrections; --",
+        trigger="diameter",
+        wrong_behavior="manual prefix",
+        correct_behavior="native dimension",
+        confirmed_by_user=True,
+    )
+
+    assert store.search_corrections("'; DROP TABLE corrections; --") == []
+    assert len(store.list_records("corrections")) == 1
+    with pytest.raises(ValueError, match="table must be one of"):
+        store.list_records("corrections; DROP TABLE ai_tasks")
