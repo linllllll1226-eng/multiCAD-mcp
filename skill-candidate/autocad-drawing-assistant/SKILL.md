@@ -37,6 +37,29 @@ Use the currently connected `multiCAD-mcp` CAD tools to work on the active AutoC
 - If a validation receipt is missing, expired, already consumed, or rejected,
   stop and run `cad_plan_validate` again. Never fall back to a legacy write.
 
+## Analyze PDF and image sources efficiently
+
+- Call `cad_vision_capabilities` once before the first source-analysis task in a
+  session. Treat unavailable optional providers as a reported limitation, not as
+  permission to weaken CAD write controls.
+- For a local PDF or image, call `cad_analyze_source` before final model
+  interpretation when the tool is available. This tool is read-only and must not
+  be described as a CAD write or verification step.
+- Prefer `vector_pdf` results for embedded PDF paths and text. Use raster OCR only
+  when vector text is absent; never rasterize a vector PDF merely to recover data
+  that the vector extractor already returned.
+- For raster images, use reported deskew and line/circle candidates to reduce
+  visual ambiguity. Treat pixel geometry as candidates only. Never promote pixel
+  distances to formal production dimensions without an explicit dimension or a
+  user-confirmed geometric constraint.
+- Reuse cached results for the same source SHA-256 and options. Start with
+  `include_samples=false` for a compact summary; request bounded samples only when
+  the summary is insufficient.
+- Do not claim OCR coverage when `ocr_provider_available=false`. Continue with
+  model vision and clearly mark uncertain text instead of inventing a value.
+- If source analysis fails, report the exact failure. Do not compensate by calling
+  a legacy CAD write tool or by creating approximate geometry on a formal layer.
+
 ## Plan before drawing
 
 1. Read and report the current DWG name, drawing units, layers, and object statistics.
