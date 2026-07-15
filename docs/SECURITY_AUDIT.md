@@ -49,6 +49,7 @@ The local Windows release gate on 2026-07-15 produced these results:
 | MkDocs | Strict build passed |
 | Enhanced MCP registration | Exactly 23 tools |
 | Bandit (`-ll -ii`) | Zero unsuppressed medium/high findings |
+| Full Bandit scan (informational) | 33 low-severity findings: B101 x1, B110 x30, B112 x2 |
 | pip-audit | Zero known vulnerabilities across the complete exported lock set |
 | OCR real benchmark | 5 text regions, 4 dimension kinds, 100% expected-kind recall |
 | OCR cold request | 22,019.011 ms with local cached models |
@@ -85,6 +86,17 @@ has a narrow `# nosec B608` annotation on the dynamic fragment beside its docume
 Unit tests also verify that table-name injection is rejected and search values cannot alter the
 schema. Any new dynamic SQL must either avoid string construction or document and test an
 equivalent whitelist and parameter-binding invariant.
+
+## Accepted low-severity Bandit debt
+
+The unfiltered informational Bandit scan reports 33 low-severity findings: one B101, 30 B110, and
+two B112 findings. These are tracked code-quality debt for v0.4.0, primarily intentional handling
+of optional AutoCAD COM cleanup, property, and update failures, plus one internal assertion. They
+are not the 10 reviewed SQL B608 findings and are not dependency-vulnerability exceptions.
+
+Future hardening should replace broad exception suppression with narrower exception types and
+debug logging where AutoCAD product compatibility permits. Release gating still fails on every
+unsuppressed medium- or high-severity Bandit finding.
 
 ## Operational boundaries
 
