@@ -443,8 +443,10 @@ class SQLiteMemoryStore:
                 raise KeyError(f"AI task not found: {task_id}")
         return self.get_ai_task(task_id)
 
-    def get_ai_task(self, task_id: str) -> dict[str, Any]:
-        """Return one task and its recorded entity rows."""
+    def get_ai_task(
+        self, task_id: str, *, include_entities: bool = True
+    ) -> dict[str, Any]:
+        """Return one task and optionally its recorded entity rows."""
         with self._lock, self._connection() as connection:
             row = connection.execute(
                 "SELECT * FROM ai_tasks WHERE task_id = ?", (task_id,)
@@ -452,24 +454,38 @@ class SQLiteMemoryStore:
         if row is None:
             raise KeyError(f"AI task not found: {task_id}")
         task = _decode_json_fields(dict(row))
-        task["entities"] = self.get_ai_task_entities(task_id)
+        if include_entities:
+            task["entities"] = self.get_ai_task_entities(task_id)
         return task
 
     def list_ai_tasks(
-        self, *, status: str | None = None, limit: int = 100
+        self,
+        *,
+        status: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        include_details: bool = False,
     ) -> list[dict[str, Any]]:
-        """List durable AI tasks without opening or modifying a drawing."""
+        """List durable AI tasks with optional heavy plan/verification payloads."""
         limit = max(1, min(int(limit), 500))
+        offset = max(0, int(offset))
         params: list[Any] = []
         where = ""
         if status is not None:
             self._validate_task_status(status)
             where = " WHERE status = ?"
             params.append(status)
-        params.append(limit)
+        params.extend([limit, offset])
+        columns = "*" if include_details else """
+            task_id, task_name, drawing_name, drawing_full_name,
+            drawing_profile, status, execution_result_id, created_at, updated_at
+        """
         with self._lock, self._connection() as connection:
             rows = connection.execute(
-                f"SELECT * FROM ai_tasks{where} ORDER BY created_at DESC LIMIT ?",
+                f"""
+                SELECT {columns} FROM ai_tasks{where}
+                ORDER BY created_at DESC LIMIT ? OFFSET ?
+                """,
                 params,
             ).fetchall()
         return [_decode_json_fields(dict(row)) for row in rows]
@@ -518,17 +534,39 @@ class SQLiteMemoryStore:
                 )
         return self.get_ai_task_entities(task_id)
 
-    def get_ai_task_entities(self, task_id: str) -> list[dict[str, Any]]:
-        """Return all recorded handles for one task."""
+    def get_ai_task_entities(
+        self,
+        task_id: str,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return recorded handles for one task, optionally paginated."""
+        offset = max(0, int(offset))
+        pagination = ""
+        params: list[Any] = [task_id]
+        if limit is not None:
+            pagination = " LIMIT ? OFFSET ?"
+            params.extend([max(1, min(int(limit), 500)), offset])
         with self._lock, self._connection() as connection:
             rows = connection.execute(
-                """
+                f"""
                 SELECT * FROM ai_task_entities
                 WHERE task_id = ? ORDER BY id
+                {pagination}
                 """,
-                (task_id,),
+                params,
             ).fetchall()
         return [_decode_json_fields(dict(row)) for row in rows]
+
+    def count_ai_task_entities(self, task_id: str) -> int:
+        """Return the recorded entity count without loading entity JSON payloads."""
+        with self._lock, self._connection() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS count FROM ai_task_entities WHERE task_id = ?",
+                (task_id,),
+            ).fetchone()
+        return int(row["count"] if row is not None else 0)
 
     def update_ai_task_entity(
         self,

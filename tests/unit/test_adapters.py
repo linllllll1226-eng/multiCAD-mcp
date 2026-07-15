@@ -525,12 +525,10 @@ class TestDataExport:
             # Should return False when there's no data
             assert result is False
 
-    def test_export_to_excel_creates_file(self):
+    def test_export_to_excel_creates_file(self, tmp_path, monkeypatch):
         """Test that export_to_excel creates a valid Excel file."""
-        import os
-        from pathlib import Path
+        monkeypatch.setenv("MULTICAD_OUTPUT_DIR", str(tmp_path / "导出"))
         from src.adapters.autocad_adapter import AutoCADAdapter
-        from core import get_config
 
         adapter = AutoCADAdapter("autocad")
 
@@ -589,8 +587,7 @@ class TestDataExport:
                 assert result is True
 
                 # Get expected filepath
-                config = get_config()
-                output_dir = Path(config.output.directory).expanduser().resolve()
+                output_dir = (tmp_path / "导出").resolve()
                 filepath = output_dir / "sheets" / filename
 
                 # File should exist
@@ -599,17 +596,15 @@ class TestDataExport:
                 assert filepath.stat().st_size > 0
             finally:
                 # Cleanup
-                config = get_config()
-                output_dir = Path(config.output.directory).expanduser().resolve()
-                filepath = output_dir / filename
+                output_dir = (tmp_path / "导出").resolve()
+                filepath = output_dir / "sheets" / filename
                 if filepath.exists():
                     filepath.unlink()
 
-    def test_export_to_excel_creates_layers_sheet(self):
+    def test_export_to_excel_creates_layers_sheet(self, tmp_path, monkeypatch):
         """Test that export_to_excel creates a Layers sheet with detailed layer information."""
-        from pathlib import Path
+        monkeypatch.setenv("MULTICAD_OUTPUT_DIR", str(tmp_path / "图层导出"))
         from src.adapters.autocad_adapter import AutoCADAdapter
-        from core import get_config
         from openpyxl import load_workbook
 
         adapter = AutoCADAdapter("autocad")
@@ -671,8 +666,7 @@ class TestDataExport:
                 assert result is True
 
                 # Get expected filepath
-                config = get_config()
-                output_dir = Path(config.output.directory).expanduser().resolve()
+                output_dir = (tmp_path / "图层导出").resolve()
                 filepath = output_dir / "sheets" / filename
 
                 # Load the workbook and check sheets
@@ -702,8 +696,7 @@ class TestDataExport:
 
             finally:
                 # Cleanup
-                config = get_config()
-                output_dir = Path(config.output.directory).expanduser().resolve()
+                output_dir = (tmp_path / "图层导出").resolve()
                 filepath = output_dir / "sheets" / filename
                 if filepath.exists():
                     filepath.unlink()

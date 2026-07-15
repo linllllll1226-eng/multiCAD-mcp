@@ -24,9 +24,9 @@
     }
   },
   "output": {
-    "directory": "~/Documents/multiCAD Exports",
+    "directory": "./exports",
     "format": "dwg",
-    "allow_arbitrary_paths": true
+    "allow_arbitrary_paths": false
   },
   "dashboard": {
     "port": 8888,

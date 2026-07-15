@@ -403,6 +403,57 @@ def test_task_list_marks_other_drawing_without_resolving_handles(tmp_path):
     assert task["active_entity_count"] == 0
 
 
+def test_task_queries_default_to_summaries_and_paginate_entities(tmp_path):
+    entities = [
+        FakeEntity(f"A{index}", "AI_PREVIEW_OUTLINE") for index in range(1, 4)
+    ]
+    adapter = FakeAdapter(FakeDocument(entities))
+    store = SQLiteMemoryStore(tmp_path / "memory.db")
+    _seed_task(store, adapter, "task-a", entities[0])
+    extra_rows = []
+    for entity in entities[1:]:
+        metadata = _metadata("task-a")
+        write_entity_provenance(adapter, adapter.document, entity, metadata)
+        extra_rows.append(
+            {
+                "handle": entity.Handle,
+                "object_type": entity.ObjectName,
+                "operation": "create",
+                "owned": True,
+                "preview_layer": entity.Layer,
+                "current_layer": entity.Layer,
+                "formal_layer": "",
+                "source_type": metadata["source_type"],
+                "confidence": metadata["confidence"],
+                "approximate_reference": False,
+                "metadata": metadata,
+            }
+        )
+    store.add_ai_task_entities("task-a", extra_rows)
+
+    manager = TaskTrackingManager(store)
+    task_page = manager.list_tasks(adapter)
+    task = task_page["tasks"][0]
+    assert "plan_data" not in task
+    assert "verification_data" not in task
+    assert task["recorded_entity_count"] == 3
+    assert task["active_entity_count"] is None
+
+    counted = manager.list_tasks(adapter, include_active_counts=True)["tasks"][0]
+    assert counted["active_entity_count"] == 3
+
+    first = manager.get_task_entities(adapter, "task-a", limit=2)
+    assert [row["handle"] for row in first["entities"]] == ["A1", "A2"]
+    assert first["has_more"] is True
+    assert first["next_offset"] == 2
+    assert "plan_data" not in first["task"]
+    assert "provenance" not in first["entities"][0]
+
+    second = manager.get_task_entities(adapter, "task-a", offset=2, limit=2)
+    assert [row["handle"] for row in second["entities"]] == ["A3"]
+    assert second["has_more"] is False
+
+
 def test_commit_requires_verified_task_and_changes_only_layer(tmp_path):
     entity = FakeEntity("A1", "AI_PREVIEW_OUTLINE")
     adapter = FakeAdapter(FakeDocument([entity]))

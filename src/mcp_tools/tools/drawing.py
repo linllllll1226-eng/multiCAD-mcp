@@ -51,6 +51,7 @@ from core.models import (
     DrawTableRequest,
 )
 from mcp_tools.decorators import cad_tool, get_current_adapter
+from mcp_tools.strict_mode import assert_legacy_action_allowed
 from mcp_tools.helpers import parse_coordinate
 from mcp_tools.shorthand import parse_drawing_input
 
@@ -560,6 +561,7 @@ def register_drawing_tools(mcp):
         Returns:
             JSON result with per-entity status and created handles
         """
+        assert_legacy_action_allowed("draw_entities", "create")
         try:
             entities_data = parse_drawing_input(entities)
         except Exception as e:

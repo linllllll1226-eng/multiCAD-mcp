@@ -30,6 +30,7 @@ from core.models import (
 from mcp_tools.decorators import cad_tool, get_current_adapter
 from mcp_tools.helpers import parse_handles
 from mcp_tools.shorthand import parse_entity_ops_input
+from mcp_tools.strict_mode import assert_legacy_action_allowed
 
 logger = logging.getLogger(__name__)
 
@@ -407,6 +408,20 @@ def register_entity_tools(mcp):
                 continue
 
             action_lower = action.lower()
+            try:
+                assert_legacy_action_allowed(
+                    "manage_entities", action_lower, spec
+                )
+            except PermissionError as exc:
+                results.append(
+                    {
+                        "index": i,
+                        "action": action_lower,
+                        "success": False,
+                        "error": str(exc),
+                    }
+                )
+                continue
             dispatch_entry = ENTITY_DISPATCH.get(action_lower)
 
             if not dispatch_entry:

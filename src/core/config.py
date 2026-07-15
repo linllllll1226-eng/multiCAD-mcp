@@ -136,7 +136,7 @@ class ConfigManager:
                 ),
             },
             output=OutputConfig(
-                directory="~/Documents/multiCAD Exports",
+                directory="./exports",
                 format="dwg",
                 allow_arbitrary_paths=False,
             ),
@@ -164,7 +164,7 @@ class ConfigManager:
             # Parse output config
             out_dict = config_dict.get("output", {})
             output = OutputConfig(
-                directory=out_dict.get("directory", "~/Documents/multiCAD Exports"),
+                directory=out_dict.get("directory", "./exports"),
                 format=out_dict.get("format", "dwg"),
                 allow_arbitrary_paths=out_dict.get("allow_arbitrary_paths", False),
             )

@@ -21,7 +21,14 @@ STDIO and does not start the dashboard or bind a TCP port.
 - `cad_memory.verifier`: fresh COM reads and target-versus-actual comparison.
 - `mcp_tools.tools.memory`: six local experience/profile MCP tools.
 - `mcp_tools.tools.validation`: plan validation, guarded execution, and
-  post-execution verification MCP tools.
+post-execution verification MCP tools.
+
+The current enhanced workflow also uses a one-time validation receipt. After a
+successful `cad_plan_validate`, pass the returned
+`validation_receipt.validation_id` to `cad_execute_plan`. The receipt binds the
+exact plan to the active drawing and `INSUNITS`; it expires, cannot be replayed,
+and is invalid after an MCP restart. See `docs/CAD_SAFETY_HARDENING.md` for the
+strict-mode and migration details.
 
 ## Database
 

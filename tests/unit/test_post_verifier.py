@@ -50,12 +50,42 @@ class FakeRectangle:
     )
 
 
+class FakeLine:
+    Handle = "L1"
+    ObjectName = "AcDbLine"
+    Layer = "AI_PREVIEW_CENTER"
+    Linetype = "ByLayer"
+    StartPoint = (0.0, 0.0, 0.0)
+    EndPoint = (100.0, 0.0, 0.0)
+    Length = 100.0
+
+
+class FakeLayer:
+    """Layer double carrying one effective linetype."""
+
+    def __init__(self, linetype):
+        """Store the layer linetype."""
+        self.Linetype = linetype
+
+
+class FakeLayers:
+    """Layers collection double returning one configured layer."""
+
+    def __init__(self, linetype="Continuous"):
+        """Store the effective linetype for all requested layers."""
+        self.linetype = linetype
+
+    def Item(self, _name):  # noqa: N802 - mirrors AutoCAD COM
+        return FakeLayer(self.linetype)
+
+
 class FakeDocument:
     """Minimal COM document double."""
 
-    def __init__(self, objects):
+    def __init__(self, objects, layer_linetype="Continuous"):
         """Store fake entities by handle."""
         self.objects = objects
+        self.Layers = FakeLayers(layer_linetype)
 
     def HandleToObject(self, handle):  # noqa: N802 - mirrors AutoCAD COM
         """Return a fake entity by COM-style handle lookup."""
@@ -65,9 +95,9 @@ class FakeDocument:
 class FakeAdapter:
     """Minimal adapter double used by the verifier."""
 
-    def __init__(self, objects):
+    def __init__(self, objects, layer_linetype="Continuous"):
         """Create the adapter with a fake document."""
-        self.document = FakeDocument(objects)
+        self.document = FakeDocument(objects, layer_linetype)
 
     def _get_document(self, operation):
         return self.document
@@ -144,3 +174,38 @@ def test_actual_rectangle_reports_width_height_and_closed_state():
     assert rows["width"]["actual"] == 1000
     assert rows["height"]["actual"] == 600
     assert rows["closed"]["actual"] is True
+
+
+def test_centerline_verification_checks_effective_layer_linetype():
+    plan = DrawingPlan.model_validate(
+        {
+            "task_name": "centerline",
+            "unit": "mm",
+            "user_confirmed": True,
+            "existing_layers": ["AI_PREVIEW_CENTER"],
+            "entities": [
+                {
+                    "entity_type": "line",
+                    "coordinates": {"start": [0, 0, 0], "end": [100, 0, 0]},
+                    "dimensions": {},
+                    "layer": "AI_PREVIEW_CENTER",
+                    "linetype": "ByLayer",
+                    "dimension_source": "explicit_dimension",
+                    "confidence": 1,
+                }
+            ],
+        }
+    )
+    failed = PostExecutionVerifier().verify(
+        FakeAdapter({"L1": FakeLine()}, "Continuous"), plan, ["L1"]
+    )
+    assert not failed["passed"]
+    row = next(
+        item for item in failed["rows"] if item["property"] == "effective_linetype"
+    )
+    assert row["actual"] == "Continuous"
+
+    passed = PostExecutionVerifier().verify(
+        FakeAdapter({"L1": FakeLine()}, "CENTER2"), plan, ["L1"]
+    )
+    assert passed["passed"], passed

@@ -89,6 +89,22 @@ def _assert_document_identity(
         )
 
 
+def _task_summary(task: dict[str, Any]) -> dict[str, Any]:
+    """Return stable task metadata without heavy plan or verification payloads."""
+    fields = (
+        "task_id",
+        "task_name",
+        "drawing_name",
+        "drawing_full_name",
+        "drawing_profile",
+        "status",
+        "execution_result_id",
+        "created_at",
+        "updated_at",
+    )
+    return {key: task.get(key) for key in fields if key in task}
+
+
 class TaskTrackingManager:
     """Operate only on entities carrying a matching assistant task identifier."""
 
@@ -97,15 +113,36 @@ class TaskTrackingManager:
         self.store = store
 
     def list_tasks(
-        self, adapter: Any, *, status: str | None = None, limit: int = 100
+        self,
+        adapter: Any,
+        *,
+        status: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+        include_details: bool = False,
+        include_active_counts: bool = False,
     ) -> dict[str, Any]:
-        """List database tasks and report how many entities still exist in CAD."""
+        """List paginated task summaries and optional live entity counts."""
+        limit = max(1, min(int(limit), 100))
+        offset = max(0, int(offset))
         document = adapter._get_document("cad_list_ai_tasks")
-        tasks = self.store.list_ai_tasks(status=status, limit=limit)
+        fetched = self.store.list_ai_tasks(
+            status=status,
+            limit=limit + 1,
+            offset=offset,
+            include_details=include_details,
+        )
+        has_more = len(fetched) > limit
+        tasks = fetched[:limit]
         for task in tasks:
-            active = 0
             drawing_match = _identity_matches(task, document)
-            if drawing_match:
+            task["active_drawing_match"] = drawing_match
+            task["recorded_entity_count"] = self.store.count_ai_task_entities(
+                task["task_id"]
+            )
+            task["active_entity_count"] = 0 if not drawing_match else None
+            if drawing_match and include_active_counts:
+                active = 0
                 for row in self.store.get_ai_task_entities(task["task_id"]):
                     try:
                         entity = document.HandleToObject(row["handle"])
@@ -114,21 +151,44 @@ class TaskTrackingManager:
                             active += 1
                     except Exception:
                         pass
-            task["active_drawing_match"] = drawing_match
-            task["recorded_entity_count"] = len(
-                self.store.get_ai_task_entities(task["task_id"])
-            )
-            task["active_entity_count"] = active
-        return {"count": len(tasks), "tasks": tasks}
+                task["active_entity_count"] = active
+        return {
+            "count": len(tasks),
+            "offset": offset,
+            "limit": limit,
+            "has_more": has_more,
+            "next_offset": offset + limit if has_more else None,
+            "include_details": include_details,
+            "include_active_counts": include_active_counts,
+            "tasks": tasks,
+        }
 
-    def get_task_entities(self, adapter: Any, task_id: str) -> dict[str, Any]:
-        """Read only active entities whose XData proves task ownership."""
-        task = self.store.get_ai_task(task_id)
+    def get_task_entities(
+        self,
+        adapter: Any,
+        task_id: str,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+        include_actual: bool = True,
+        include_provenance: bool = False,
+        include_task_details: bool = False,
+    ) -> dict[str, Any]:
+        """Read a bounded page of entities whose XData proves task ownership."""
+        offset = max(0, int(offset))
+        limit = max(1, min(int(limit), 200))
+        task = self.store.get_ai_task(task_id, include_entities=False)
         document = adapter._get_document("cad_get_task_entities")
         _assert_document_identity(task, document, source=f"Task {task_id}")
         entities = []
         missing = []
-        for row in task["entities"]:
+        rows = self.store.get_ai_task_entities(
+            task_id,
+            offset=offset,
+            limit=limit + 1,
+        )
+        has_more = len(rows) > limit
+        for row in rows[:limit]:
             try:
                 entity = document.HandleToObject(row["handle"])
                 metadata = read_entity_provenance(entity)
@@ -136,16 +196,24 @@ class TaskTrackingManager:
                     not metadata or metadata.get("task_id") != task_id
                 ):
                     raise PermissionError("Entity provenance does not match task")
-                entities.append(
-                    {
-                        **row,
-                        "actual": read_entity_state(entity),
-                        "provenance": metadata,
-                    }
-                )
+                payload = dict(row)
+                if include_actual:
+                    payload["actual"] = read_entity_state(entity)
+                if include_provenance:
+                    payload["provenance"] = metadata
+                entities.append(payload)
             except Exception as exc:
                 missing.append({"handle": row["handle"], "error": str(exc)})
-        return {"task": task, "entities": entities, "missing": missing}
+        return {
+            "task": task if include_task_details else _task_summary(task),
+            "total_recorded": self.store.count_ai_task_entities(task_id),
+            "offset": offset,
+            "limit": limit,
+            "has_more": has_more,
+            "next_offset": offset + limit if has_more else None,
+            "entities": entities,
+            "missing": missing,
+        }
 
     def get_entity_provenance(self, adapter: Any, handle: str) -> dict[str, Any]:
         """Return XData and actual state for one active drawing handle."""

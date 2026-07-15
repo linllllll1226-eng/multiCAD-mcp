@@ -25,18 +25,42 @@ def register_task_tools(mcp: Any) -> None:
     """Register task-scoped read, commit, and reversible revert tools."""
 
     @cad_tool(mcp, "cad_list_ai_tasks")
-    def cad_list_ai_tasks(status: str | None = None, limit: int = 100) -> str:
-        """List AI tasks and count matching entities in the active drawing."""
+    def cad_list_ai_tasks(
+        status: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+        include_details: bool = False,
+        include_active_counts: bool = False,
+    ) -> str:
+        """List paginated task summaries; live COM counts are opt-in."""
         result = TaskTrackingManager(_store()).list_tasks(
-            get_current_adapter(), status=status, limit=limit
+            get_current_adapter(),
+            status=status,
+            limit=limit,
+            offset=offset,
+            include_details=include_details,
+            include_active_counts=include_active_counts,
         )
         return _result(result)
 
     @cad_tool(mcp, "cad_get_task_entities")
-    def cad_get_task_entities(task_id: str) -> str:
-        """Read entities whose XData proves ownership by the specified task."""
+    def cad_get_task_entities(
+        task_id: str,
+        offset: int = 0,
+        limit: int = 50,
+        include_actual: bool = True,
+        include_provenance: bool = False,
+        include_task_details: bool = False,
+    ) -> str:
+        """Read a bounded entity page whose XData proves task ownership."""
         result = TaskTrackingManager(_store()).get_task_entities(
-            get_current_adapter(), task_id
+            get_current_adapter(),
+            task_id,
+            offset=offset,
+            limit=limit,
+            include_actual=include_actual,
+            include_provenance=include_provenance,
+            include_task_details=include_task_details,
         )
         return _result(result)
 

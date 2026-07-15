@@ -6,7 +6,10 @@ The existing ``server.py`` remains unchanged for backward compatibility.
 """
 
 import logging
+import os
 import sys
+
+os.environ.setdefault("MULTICAD_STRICT_GUARDED_WRITES", "1")
 
 from mcp_tools.tools.memory import register_memory_tools
 from mcp_tools.tools.tasks import register_task_tools

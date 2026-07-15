@@ -21,6 +21,7 @@ from typing import Optional, Dict, Any, Callable, List, Tuple
 from mcp_tools.decorators import cad_tool, get_current_adapter
 from mcp_tools.helpers import parse_coordinate
 from mcp_tools.shorthand import parse_block_ops_input
+from mcp_tools.strict_mode import assert_legacy_action_allowed
 
 logger = logging.getLogger(__name__)
 
@@ -331,6 +332,18 @@ def register_block_tools(mcp) -> None:
                 continue
 
             action_lower = action.lower()
+            try:
+                assert_legacy_action_allowed("manage_blocks", action_lower, spec)
+            except PermissionError as exc:
+                results.append(
+                    {
+                        "index": i,
+                        "action": action_lower,
+                        "success": False,
+                        "error": str(exc),
+                    }
+                )
+                continue
             dispatch_entry = BLOCK_DISPATCH.get(action_lower)
 
             if not dispatch_entry:

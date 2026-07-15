@@ -23,14 +23,19 @@ Use the currently connected `multiCAD-mcp` CAD tools to work on the active AutoC
 - Search `cad_memory_search` for relevant confirmed corrections before finalizing the plan. Treat only records with `confirmed_by_user=true` as enforceable experience.
 - Execute every approved CAD write in this exact order:
   1. Call `cad_plan_validate` with the complete structured plan.
-  2. Stop without writing if validation does not return `passed=true`.
-  3. Call `cad_execute_plan` with the same unchanged plan.
+  2. Stop without writing unless validation returns `passed=true` and a
+     non-empty `validation_receipt.validation_id`.
+  3. Call `cad_execute_plan` with the same unchanged plan and that exact
+     `validation_id`. The receipt is one-time, drawing-bound, unit-bound, and
+     expires quickly; never reuse it for a revised plan or another drawing.
   4. Stop and report the failure if execution does not return `success=true`.
   5. Call `cad_verify_execution` with the same plan and the returned handles.
   6. Report success only when verification returns `passed=true` and every required comparison row passes.
 - Never silently fall back to an old write tool when an enhanced workflow tool is unavailable or cannot express the requested operation. Stop and ask the user for direction.
 - Permit `manage_layers` only to create missing, user-approved preview layers before guarded geometry execution. Do not use this exception to create, move, delete, or alter geometry.
 - Keep the plan payload unchanged between validation, execution, and verification. If any coordinate, dimension, layer, linetype, constraint, uncertainty, or target handle changes, validate the revised plan again.
+- If a validation receipt is missing, expired, already consumed, or rejected,
+  stop and run `cad_plan_validate` again. Never fall back to a legacy write.
 
 ## Plan before drawing
 
@@ -48,7 +53,7 @@ Use the currently connected `multiCAD-mcp` CAD tools to work on the active AutoC
 ## Route shortcut intents
 
 - For **“分析这张图”**, perform only the read-only DWG preflight and source analysis. Classify explicit, uniquely derived, and uncertain information; do not create, move, delete, dimension, save, or back up anything.
-- For **“开始预览”**, load the user-selected profile with `cad_load_drawing_profile`, require explicit plan confirmation, force new geometry onto `AI_PREVIEW_*` or `AI_UNCERTAIN`, then run `cad_plan_validate` → `cad_execute_plan` → `cad_verify_execution` without changing the plan payload. Preserve the returned `task_id` and pass that same ID to verification.
+- For **“开始预览”**, load the user-selected profile with `cad_load_drawing_profile`, require explicit plan confirmation, force new geometry onto `AI_PREVIEW_*` or `AI_UNCERTAIN`, then run `cad_plan_validate` → `cad_execute_plan` → `cad_verify_execution` without changing the plan payload. Pass the validation response's exact `validation_id` to execution. Preserve the returned `task_id` and pass that same ID to verification.
 - For **“正式提交”**, require a passed preview verification and identify the exact `task_id`. Before any write, run `D:\AI\multiCAD-mcp\.venv\Scripts\python.exe D:\AI\multiCAD-mcp\scripts\Backup-CAD-Drawing.py --keep 20`; stop if it reports an unsaved or dirty drawing. Call `cad_commit_preview_task` first with `confirmed=false` and show the returned handles, object types, source layers, and target layers. After a fresh user confirmation, call it again with `confirmed=true` and the same mapping. This operation may change only layers and provenance metadata; it must not move, scale, reconstruct, or delete geometry. Never fall back to a legacy modification tool.
 - For **“检查图纸”**, inspect read-only for duplicate geometry, open polylines that should be closed, wrong layers, abnormal dimension type or measurement, non-empty `TextOverride`, text fill or masks, and incorrect center/hidden linetypes. Report handles and evidence; do not repair unless the user confirms a separate plan.
 - For **“撤回本次”**, call `cad_list_ai_tasks` and identify the exact `task_id`; never infer ownership from the current selection. Call `cad_revert_ai_task` first with `confirmed=false` and show its manifest. After confirmation, call it with `confirmed=true`. The safe revert moves only XData-proven objects from that task to the hidden `AI_REVERTED` layer; it does not use global Undo and does not hard-delete objects. A committed task additionally requires the user to confirm `allow_committed=true`. Never use generic Undo or legacy deletion as a fallback.

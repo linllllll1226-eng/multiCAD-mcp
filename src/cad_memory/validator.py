@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Iterable
 
 from .models import ConstraintSpec, DrawingPlan, EntityPlan
+from .receipts import SUPPORTED_PLAN_UNITS, normalize_unit
 
 PREVIEW_LAYERS = {
     "AI_PREVIEW_OUTLINE",
@@ -76,8 +77,9 @@ class PlanValidator:
         plan: DrawingPlan | dict[str, Any],
         *,
         available_layers: Iterable[str] | None = None,
+        drawing_unit: str | None = None,
     ) -> ValidationReport:
-        """Validate a plan against supplied or declared layer names."""
+        """Validate a plan against supplied layers and the active drawing unit."""
         if not isinstance(plan, DrawingPlan):
             plan = DrawingPlan.model_validate(plan)
         report = ValidationReport(passed=False)
@@ -85,12 +87,39 @@ class PlanValidator:
             available_layers if available_layers is not None else plan.existing_layers
         )
 
-        if not plan.unit or not plan.unit.strip():
+        plan_unit = normalize_unit(plan.unit)
+        active_unit = normalize_unit(drawing_unit)
+        if plan_unit is None:
             report.errors.append(
                 ValidationIssue("unit_missing", "Drawing unit is not specified")
             )
+        elif plan_unit not in SUPPORTED_PLAN_UNITS:
+            report.errors.append(
+                ValidationIssue(
+                    "unit_unsupported", f"Unsupported drawing unit: {plan.unit}"
+                )
+            )
         else:
-            report.checks.append(f"unit={plan.unit}")
+            report.checks.append(f"plan_unit={plan_unit}")
+            if active_unit == "unitless":
+                report.warnings.append(
+                    ValidationIssue(
+                        "drawing_unit_unitless",
+                        "Active drawing INSUNITS is unitless; coordinates are "
+                        "interpreted "
+                        f"as {plan_unit} only because the plan explicitly says so",
+                    )
+                )
+            elif active_unit is not None and active_unit != plan_unit:
+                report.errors.append(
+                    ValidationIssue(
+                        "drawing_unit_mismatch",
+                        f"Plan unit {plan_unit} does not match active drawing "
+                        f"INSUNITS {active_unit}",
+                    )
+                )
+            elif active_unit is not None:
+                report.checks.append(f"drawing_unit={active_unit}")
 
         if not plan.user_confirmed:
             report.errors.append(

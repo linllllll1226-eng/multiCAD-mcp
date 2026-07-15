@@ -111,6 +111,12 @@ class PostExecutionVerifier:
         for index, (target, handle) in enumerate(zip(plan.entities, handles)):
             try:
                 actual = read_entity_state(document.HandleToObject(handle))
+                if str(actual.get("linetype", "")).lower() == "bylayer":
+                    try:
+                        layer = document.Layers.Item(actual["layer"])
+                        actual["effective_linetype"] = str(layer.Linetype)
+                    except Exception:
+                        pass
                 actual_entities.append(actual)
                 rows.extend(self._compare_entity(index, target, actual, plan.tolerance))
             except Exception as exc:
@@ -132,6 +138,11 @@ class PostExecutionVerifier:
             "linetype": target.linetype,
             "object_type": _expected_object_type(target.entity_type),
         }
+        if target.linetype.lower() == "bylayer":
+            if target.layer.upper() == "AI_PREVIEW_CENTER":
+                checks["effective_linetype"] = ["CENTER", "CENTER2", "CENTERX2"]
+            elif target.layer.upper() == "AI_PREVIEW_HIDDEN":
+                checks["effective_linetype"] = ["HIDDEN", "HIDDEN2", "HIDDENX2"]
         kind = target.entity_type.lower()
         if kind == "line":
             checks.update(
@@ -171,7 +182,9 @@ class PostExecutionVerifier:
         for name, target_value in checks.items():
             actual_value = actual.get(name)
             error = _numeric_error(target_value, actual_value)
-            if name == "object_type" and isinstance(target_value, list):
+            if name in {"object_type", "effective_linetype"} and isinstance(
+                target_value, list
+            ):
                 passed = str(actual_value).lower() in {
                     value.lower() for value in target_value
                 }

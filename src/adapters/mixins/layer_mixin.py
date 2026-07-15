@@ -42,6 +42,7 @@ class LayerMixin:
         name: str,
         color: str | int = "white",
         lineweight: int = 0,
+        linetype: str = "Continuous",
     ) -> bool:
         """Create a new layer in the active drawing via COM.
 
@@ -50,6 +51,8 @@ class LayerMixin:
             color: Layer color as a name (e.g. ``"red"``) or ACI index. Default: ``"white"``.
             lineweight: Line weight in hundredths of a millimetre (e.g. 25 = 0.25 mm).
                 Use 0 for the default line weight.
+            linetype: AutoCAD layer linetype. Missing standard linetypes are loaded
+                from ``acadiso.lin`` and then ``acad.lin``.
 
         Returns:
             True if the layer was created successfully, False otherwise.
@@ -65,6 +68,27 @@ class LayerMixin:
 
             if self.validate_lineweight(lineweight) == lineweight:
                 layer_obj.LineWeight = lineweight
+
+            requested_linetype = str(linetype or "Continuous").strip()
+            if requested_linetype.lower() != "continuous":
+                try:
+                    document.Linetypes.Item(requested_linetype)
+                except Exception:
+                    loaded = False
+                    for definition_file in ("acadiso.lin", "acad.lin"):
+                        try:
+                            document.Linetypes.Load(
+                                requested_linetype, definition_file
+                            )
+                            loaded = True
+                            break
+                        except Exception:
+                            continue
+                    if not loaded:
+                        raise ValueError(
+                            f"Unable to load linetype: {requested_linetype}"
+                        )
+            layer_obj.Linetype = requested_linetype
 
             logger.info(f"Created layer '{name}'")
             return True

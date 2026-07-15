@@ -15,6 +15,11 @@ from cad_memory.provenance import (
     generate_task_id,
     read_entity_provenance,
 )
+from cad_memory.receipts import (
+    VALIDATION_RECEIPTS,
+    canonical_plan_hash,
+    read_document_unit,
+)
 from cad_memory.validator import PlanValidator
 from cad_memory.verifier import PostExecutionVerifier
 from mcp_tools.decorators import cad_tool, get_current_adapter
@@ -51,19 +56,46 @@ def register_validation_tools(mcp: Any) -> None:
 
     @cad_tool(mcp, "cad_plan_validate")
     def cad_plan_validate(plan_json: str) -> str:
-        """Validate a confirmed structured drawing plan against active CAD layers."""
+        """Validate a plan and issue a short-lived receipt for exact execution."""
         plan = DrawingPlan.model_validate_json(plan_json)
-        layers = get_current_adapter().list_layers()
-        report = PlanValidator().validate(plan, available_layers=layers)
-        return _json_result(report.to_dict())
+        adapter = get_current_adapter()
+        document = adapter._get_document("cad_plan_validate")
+        identity = document_identity(document)
+        drawing_unit = read_document_unit(document)
+        layers = adapter.list_layers()
+        report = PlanValidator().validate(
+            plan,
+            available_layers=layers,
+            drawing_unit=drawing_unit["name"],
+        )
+        payload = report.to_dict()
+        payload["plan_hash"] = canonical_plan_hash(plan)
+        payload["drawing_identity"] = identity
+        payload["drawing_unit"] = drawing_unit
+        payload["validation_receipt"] = None
+        if report.passed:
+            receipt = VALIDATION_RECEIPTS.issue(
+                plan,
+                identity,
+                drawing_unit["code"],
+            )
+            payload["validation_receipt"] = receipt.public_dict()
+        return _json_result(payload)
 
     @cad_tool(mcp, "cad_execute_plan")
-    def cad_execute_plan(plan_json: str) -> str:
-        """Execute a plan only after all pre-execution checks pass."""
+    def cad_execute_plan(plan_json: str, validation_id: str) -> str:
+        """Execute only the exact plan bound to an unexpired validation receipt."""
         plan = DrawingPlan.model_validate_json(plan_json)
         adapter = get_current_adapter()
         document = adapter._get_document("cad_execute_plan_task")
         identity = document_identity(document)
+        drawing_unit = read_document_unit(document)
+        receipt = VALIDATION_RECEIPTS.consume(
+            validation_id,
+            plan,
+            identity,
+            drawing_unit["code"],
+        )
         task_id = generate_task_id()
         store = _store()
         pending = store.record_execution(
@@ -114,6 +146,8 @@ def register_validation_tools(mcp: Any) -> None:
                 store.update_ai_task(task_id, status="failed")
             result["task_id"] = task_id
             result["execution_result_id"] = pending["id"]
+            result["validation_id"] = receipt.validation_id
+            result["plan_hash"] = receipt.plan_hash
         except Exception as exc:
             rolled_back = False
             if result and result.get("handles"):
@@ -151,6 +185,11 @@ def register_validation_tools(mcp: Any) -> None:
         resolved_task_id = task_id or store.find_task_for_handles(handles) or ""
         provenance_errors = []
         if resolved_task_id:
+            task = store.get_ai_task(resolved_task_id)
+            if canonical_plan_hash(task["plan_data"]) != canonical_plan_hash(plan):
+                provenance_errors.append(
+                    "Verification plan does not match the plan recorded for the task"
+                )
             document = adapter._get_document("cad_verify_execution_provenance")
             for index, (planned, handle) in enumerate(zip(plan.entities, handles)):
                 if planned.operation != "create":

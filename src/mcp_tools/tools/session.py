@@ -21,6 +21,7 @@ from adapters.adapter_manager import (
     shutdown_all,
     auto_detect_cad,
 )
+from mcp_tools.strict_mode import assert_legacy_action_allowed
 
 logger = logging.getLogger(__name__)
 
@@ -341,6 +342,18 @@ def register_session_tools(mcp):
                 continue
 
             action_lower = action.lower()
+            try:
+                assert_legacy_action_allowed("manage_session", action_lower, spec)
+            except PermissionError as exc:
+                results.append(
+                    {
+                        "index": i,
+                        "action": action_lower,
+                        "success": False,
+                        "error": str(exc),
+                    }
+                )
+                continue
             dispatch_entry = SESSION_DISPATCH.get(action_lower)
 
             if not dispatch_entry:

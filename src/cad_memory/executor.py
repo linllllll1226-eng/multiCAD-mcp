@@ -196,43 +196,72 @@ class PlanExecutor:
         c = entity.coordinates
         d = entity.dimensions
         common = (entity.layer, "white", 25)
+
+        def finish(handle: str) -> str:
+            if entity.linetype and entity.linetype.lower() != "bylayer":
+                document = adapter._get_document("cad_execute_plan_linetype")
+                cad_object = document.HandleToObject(handle)
+                cad_object.Linetype = entity.linetype
+            return handle
+
         if kind == "line":
-            return adapter.draw_line(
-                _coord(c["start"]), _coord(c["end"]), *common, _skip_refresh=True
+            return finish(
+                adapter.draw_line(
+                    _coord(c["start"]),
+                    _coord(c["end"]),
+                    *common,
+                    _skip_refresh=True,
+                )
             )
         if kind == "rectangle":
-            return adapter.draw_rectangle(
-                _coord(c["corner1"]), _coord(c["corner2"]), *common, _skip_refresh=True
+            return finish(
+                adapter.draw_rectangle(
+                    _coord(c["corner1"]),
+                    _coord(c["corner2"]),
+                    *common,
+                    _skip_refresh=True,
+                )
             )
         if kind == "circle":
-            return adapter.draw_circle(
-                _coord(c["center"]), float(d["radius"]), *common, _skip_refresh=True
+            return finish(
+                adapter.draw_circle(
+                    _coord(c["center"]),
+                    float(d["radius"]),
+                    *common,
+                    _skip_refresh=True,
+                )
             )
         if kind == "arc":
-            return adapter.draw_arc(
-                _coord(c["center"]),
-                float(d["radius"]),
-                float(d["start_angle"]),
-                float(d["end_angle"]),
-                *common,
-                _skip_refresh=True,
+            return finish(
+                adapter.draw_arc(
+                    _coord(c["center"]),
+                    float(d["radius"]),
+                    float(d["start_angle"]),
+                    float(d["end_angle"]),
+                    *common,
+                    _skip_refresh=True,
+                )
             )
         if kind == "polyline":
-            return adapter.draw_polyline(
-                [_coord(point) for point in c["points"]],
-                bool(d.get("closed", False)),
-                *common,
-                _skip_refresh=True,
+            return finish(
+                adapter.draw_polyline(
+                    [_coord(point) for point in c["points"]],
+                    bool(d.get("closed", False)),
+                    *common,
+                    _skip_refresh=True,
+                )
             )
         if kind in {"aligned_dimension", "linear_dimension"}:
-            return adapter.add_dimension(
-                _coord(c["start"]),
-                _coord(c["end"]),
-                None,
-                entity.layer,
-                "white",
-                float(d.get("offset", 10.0)),
-                _skip_refresh=True,
+            return finish(
+                adapter.add_dimension(
+                    _coord(c["start"]),
+                    _coord(c["end"]),
+                    None,
+                    entity.layer,
+                    "white",
+                    float(d.get("offset", 10.0)),
+                    _skip_refresh=True,
+                )
             )
         if kind == "diametric_dimension":
             return self._native_dimension(adapter, entity, radial=False)

@@ -7,11 +7,14 @@ Contains helper methods, decorators, context managers, and utility classes.
 import logging
 import time
 import math
+import os
 from pathlib import Path
 from typing import Any, Callable, TypeVar, List, Optional, TYPE_CHECKING
 from functools import wraps
 from contextlib import contextmanager
 import sys
+
+import core as core_module
 
 if sys.platform == "win32":
     import win32com.client
@@ -28,7 +31,6 @@ from core import (
     CADConnectionError,
     InvalidParameterError,
     Point,
-    ConfigManager,
 )
 from mcp_tools.constants import (
     COLOR_MAP,
@@ -473,8 +475,12 @@ class UtilityMixin:
         Returns:
             str: Full absolute path to the resolved file
         """
-        config = ConfigManager()
-        output_dir = Path(config.ensure_output_directory()).expanduser().resolve()
+        config = core_module.get_config()
+        configured_output = os.environ.get(
+            "MULTICAD_OUTPUT_DIR", config.output.directory
+        )
+        output_dir = Path(configured_output).expanduser().resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         # Define subfolder
         subfolder_mapping = {
@@ -510,7 +516,7 @@ class UtilityMixin:
         Raises:
             CADOperationError: If path traversal is detected or allowed
         """
-        config = ConfigManager().config
+        config = core_module.get_config()
         if getattr(config.output, "allow_arbitrary_paths", False):
             logger.debug(f"Bypassing path validation for: {resolved_path}")
             return True

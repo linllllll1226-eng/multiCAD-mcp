@@ -25,6 +25,7 @@ from pydantic import ValidationError
 from core.models import CreateLayerRequest
 from mcp_tools.decorators import cad_tool, get_current_adapter
 from mcp_tools.shorthand import parse_layer_ops_input
+from mcp_tools.strict_mode import assert_legacy_action_allowed
 
 logger = logging.getLogger(__name__)
 
@@ -63,10 +64,18 @@ def _create(spec: Dict[str, Any]) -> Dict[str, Any]:
         color=spec.get("color", "white"),
         lineweight=spec.get("lineweight", 25),
     )
+    linetype = str(spec.get("linetype", "Continuous"))
     success = get_current_adapter().create_layer(
-        validated.name, validated.color, validated.lineweight
+        validated.name,
+        validated.color,
+        validated.lineweight,
+        linetype,
     )
-    return {"name": spec["name"], "success": success}
+    return {
+        "name": spec["name"],
+        "linetype": linetype,
+        "success": success,
+    }
 
 
 def _rename(spec: Dict[str, Any]) -> Dict[str, Any]:
@@ -333,6 +342,18 @@ def register_layer_tools(mcp):
                 continue
 
             action_lower = action.lower()
+            try:
+                assert_legacy_action_allowed("manage_layers", action_lower, spec)
+            except PermissionError as exc:
+                results.append(
+                    {
+                        "index": i,
+                        "action": action_lower,
+                        "success": False,
+                        "error": str(exc),
+                    }
+                )
+                continue
             dispatch_entry = LAYER_DISPATCH.get(action_lower)
 
             if not dispatch_entry:

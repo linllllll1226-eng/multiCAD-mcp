@@ -22,6 +22,7 @@ from typing import Optional, Dict, Any, Callable, List, Tuple
 from core import get_config
 from mcp_tools.decorators import cad_tool, get_current_adapter
 from mcp_tools.shorthand import parse_file_ops_input
+from mcp_tools.strict_mode import assert_legacy_action_allowed
 
 logger = logging.getLogger(__name__)
 
@@ -249,6 +250,18 @@ def register_file_tools(mcp):
                 continue
 
             action_lower = action.lower()
+            try:
+                assert_legacy_action_allowed("manage_files", action_lower, spec)
+            except PermissionError as exc:
+                results.append(
+                    {
+                        "index": i,
+                        "action": action_lower,
+                        "success": False,
+                        "error": str(exc),
+                    }
+                )
+                continue
             dispatch_entry = FILE_DISPATCH.get(action_lower)
 
             if not dispatch_entry:
