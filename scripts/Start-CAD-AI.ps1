@@ -148,23 +148,51 @@ if (Get-Process -Name 'Codex' -ErrorAction SilentlyContinue) {
     exit 0
 }
 
-$codexCommands = @(Get-Command 'codex' -All -ErrorAction SilentlyContinue)
-$desktopCodex = $codexCommands | Where-Object {
-    $_.Source -like '*\WindowsApps\OpenAI.Codex_*\app\resources\codex.exe'
+$desktopAppId = 'OpenAI.Codex_2p2nqsd0c76g0!App'
+$desktopApp = Get-StartApps -ErrorAction SilentlyContinue | Where-Object {
+    $_.AppID -eq $desktopAppId
 } | Select-Object -First 1
-if ($desktopCodex) {
-    Start-Process -FilePath $desktopCodex.Source -WorkingDirectory $ProjectRoot | Out-Null
-    Write-State 'Codex' $true "desktop app started from $($desktopCodex.Source)"
+if ($desktopApp) {
+    Start-Process -FilePath 'explorer.exe' -ArgumentList "shell:AppsFolder\$desktopAppId" | Out-Null
+    Write-State 'Codex' $true "desktop app started from registered AppID $desktopAppId"
     exit 0
 }
 
-$codex = $codexCommands | Select-Object -First 1
-if (-not $codex) {
-    Write-State 'Codex' $false 'Codex Desktop and codex CLI were not found'
-    exit 1
+$codexCommands = @(Get-Command 'codex' -All -ErrorAction SilentlyContinue)
+$nodeCommand = Get-Command 'node.exe' -ErrorAction SilentlyContinue
+$npmShimPrefix = Join-Path $env:APPDATA 'npm\codex'
+$orderedCommands = $codexCommands | Sort-Object @{ Expression = {
+    if ($_.Source -match '\.exe$') { 0 }
+    elseif ($_.Source -like "$npmShimPrefix*") { 2 }
+    else { 1 }
+} }
+
+$codex = $null
+$codexVersion = $null
+foreach ($candidate in $orderedCommands) {
+    $isNpmShim = $candidate.Source -like "$npmShimPrefix*"
+    if ($isNpmShim -and -not $nodeCommand) {
+        Write-Host "Skipping stale npm Codex shim because node.exe is unavailable: $($candidate.Source)" -ForegroundColor Yellow
+        continue
+    }
+
+    try {
+        $LASTEXITCODE = $null
+        $versionOutput = @(& $candidate.Source --version 2>&1)
+        $versionText = [string]($versionOutput | Select-Object -Last 1)
+        if ($LASTEXITCODE -eq 0 -and $versionText -match '^codex-cli\s+') {
+            $codex = $candidate
+            $codexVersion = $versionText
+            break
+        }
+    }
+    catch {
+        Write-Host "Skipping unusable Codex entry: $($candidate.Source) ($($_.Exception.Message))" -ForegroundColor Yellow
+    }
 }
-if ($codex.Source -match '\.(ps1|cmd)$' -and -not (Get-Command 'node.exe' -ErrorAction SilentlyContinue)) {
-    Write-State 'Codex' $false "CLI wrapper requires node.exe: $($codex.Source)"
+
+if (-not $codex) {
+    Write-State 'Codex' $false 'No registered Codex Desktop app or verified codex CLI was found'
     exit 1
 }
 $escapedCodex = $codex.Source.Replace("'", "''")
@@ -175,4 +203,4 @@ Start-Process -FilePath 'powershell.exe' -WorkingDirectory $ProjectRoot -Argumen
     '-Command',
     $codexCommand
 ) | Out-Null
-Write-State 'Codex' $true "CLI started from $($codex.Source)"
+Write-State 'Codex' $true "CLI $codexVersion started from $($codex.Source)"
