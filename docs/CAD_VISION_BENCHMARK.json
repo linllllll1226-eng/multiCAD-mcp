@@ -1,0 +1,143 @@
+{
+  "benchmark_version": "1.0",
+  "scope": "Compares the previous deterministic MCP source-analysis capability with the new optional vector/image pipeline; it does not compare model IQ.",
+  "capabilities": {
+    "pipeline_version": "1.0.0",
+    "packages": {
+      "pymupdf": true,
+      "opencv": true,
+      "numpy": true,
+      "paddleocr": false
+    },
+    "vector_pdf_available": true,
+    "raster_geometry_available": true,
+    "ocr_provider_available": false,
+    "supported_extensions": [
+      ".bmp",
+      ".jpeg",
+      ".jpg",
+      ".pdf",
+      ".png",
+      ".tif",
+      ".tiff"
+    ],
+    "notes": [
+      "Vector PDF extraction is preferred over raster OCR when available.",
+      "PaddleOCR package presence is reported, but raster OCR is not enabled in this pipeline version.",
+      "Analysis never writes to AutoCAD or bypasses the guarded CAD workflow."
+    ]
+  },
+  "vector_pdf": {
+    "expected_primary_path_groups": 3,
+    "legacy_recovered": 0,
+    "enhanced_recovered": 3,
+    "legacy_recovery_percent": 0.0,
+    "enhanced_recovery_percent": 100.0,
+    "all_detected_path_groups": 3
+  },
+  "dimension_parsing": {
+    "case_count": 8,
+    "legacy_correct": 1,
+    "enhanced_correct": 8,
+    "legacy_accuracy_percent": 12.5,
+    "enhanced_accuracy_percent": 100.0,
+    "absolute_gain_points": 87.5,
+    "cases": [
+      {
+        "source": "100",
+        "expected": [
+          "linear",
+          100.0
+        ],
+        "legacy_pass": true,
+        "enhanced_pass": true
+      },
+      {
+        "source": "DIA 20",
+        "expected": [
+          "diameter",
+          20.0
+        ],
+        "legacy_pass": false,
+        "enhanced_pass": true
+      },
+      {
+        "source": "R10",
+        "expected": [
+          "radius",
+          10.0
+        ],
+        "legacy_pass": false,
+        "enhanced_pass": true
+      },
+      {
+        "source": "100 +/- 0.1",
+        "expected": [
+          "linear",
+          100.0
+        ],
+        "legacy_pass": false,
+        "enhanced_pass": true
+      },
+      {
+        "source": "45 DEG",
+        "expected": [
+          "angle",
+          45.0
+        ],
+        "legacy_pass": false,
+        "enhanced_pass": true
+      },
+      {
+        "source": "3 PLCS",
+        "expected": [
+          "count",
+          3
+        ],
+        "legacy_pass": false,
+        "enhanced_pass": true
+      },
+      {
+        "source": "DEPTH 12",
+        "expected": [
+          "depth",
+          12.0
+        ],
+        "legacy_pass": false,
+        "enhanced_pass": true
+      },
+      {
+        "source": "M10x1.5",
+        "expected": [
+          "thread",
+          "M10X1.5"
+        ],
+        "legacy_pass": false,
+        "enhanced_pass": true
+      }
+    ]
+  },
+  "deskew": {
+    "injected_rotation_degrees": 7.0,
+    "legacy_residual_error_degrees": 7.0,
+    "enhanced_estimated_skew_degrees": -6.9854,
+    "enhanced_residual_error_degrees": 0.0,
+    "error_reduction_percent": 100.0
+  },
+  "cache": {
+    "cold_request_ms": 7.919,
+    "warm_request_median_ms": 0.886,
+    "speedup_x": 8.94,
+    "warm_cache_hit": true
+  },
+  "safety": {
+    "autocad_connected": false,
+    "dwg_written": false,
+    "legacy_write_fallback_added": false
+  },
+  "limitations": [
+    "Synthetic benchmark results do not equal accuracy on every real drawing.",
+    "PaddleOCR is intentionally not installed or benchmarked in the stable MCP.",
+    "Raster geometry candidates still require model/user interpretation before CAD planning."
+  ]
+}

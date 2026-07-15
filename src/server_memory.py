@@ -14,6 +14,7 @@ os.environ.setdefault("MULTICAD_STRICT_GUARDED_WRITES", "1")
 from mcp_tools.tools.memory import register_memory_tools
 from mcp_tools.tools.tasks import register_task_tools
 from mcp_tools.tools.validation import register_validation_tools
+from mcp_tools.tools.vision import register_vision_tools
 from server import mcp
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 register_memory_tools(mcp)
 register_validation_tools(mcp)
 register_task_tools(mcp)
+register_vision_tools(mcp)
 
 
 if __name__ == "__main__":

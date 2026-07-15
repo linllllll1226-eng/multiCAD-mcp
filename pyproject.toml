@@ -54,6 +54,11 @@ docs = [
     "mkdocs-material>=9.5.0",
     "mkdocstrings[python]>=0.25.0",
 ]
+vision = [
+    "numpy>=1.26,<3",
+    "opencv-python-headless>=4.10",
+    "pymupdf>=1.24",
+]
 
 [project.urls]
 Homepage = "https://github.com/ancode666/multiCAD-mcp"

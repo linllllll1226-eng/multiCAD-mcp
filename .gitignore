@@ -55,3 +55,4 @@ data/*.db-shm
 data/*.db-wal
 data/*.sqlite
 data/*.sqlite3
+data/vision_cache/
