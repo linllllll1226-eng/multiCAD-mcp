@@ -9,9 +9,9 @@ import sys
 from typing import TYPE_CHECKING, Any
 
 if sys.platform == "win32":
-    import win32com.client
     import pythoncom
     import pywintypes
+    import win32com.client
 else:
     raise ImportError("AutoCAD adapter requires Windows OS with COM support")
 
@@ -61,25 +61,20 @@ class ConnectionMixin:
             try:
                 pythoncom.CoInitialize()
             except Exception as e:
-                logger.debug(
-                    f"CoInitialize: {e} (may already be initialized for thread)"
-                )
+                logger.debug(f"CoInitialize: {e} (may already be initialized for thread)")
 
             # Try to get existing instance
             max_retries = 3
             for attempt in range(max_retries):
                 try:
-                    self.application = win32com.client.GetActiveObject(
-                        self.config.prog_id
-                    )
-                    logger.info(
-                        f"{self.cad_type} instance found (active via GetActiveObject)"
-                    )
+                    self.application = win32com.client.GetActiveObject(self.config.prog_id)
+                    logger.info(f"{self.cad_type} instance found (active via GetActiveObject)")
                     break
                 except Exception as e:
                     if attempt == max_retries - 1:
                         logger.debug(
-                            f"GetActiveObject for {self.config.prog_id} failed after {max_retries} attempts: {e}"
+                            f"GetActiveObject for {self.config.prog_id} failed after "
+                            f"{max_retries} attempts: {e}"
                         )
                     else:
                         pythoncom.CoInitialize()  # Re-init just in case
@@ -103,14 +98,13 @@ class ConnectionMixin:
                     if error_code == -2147221005:
                         error_msg = (
                             f"Invalid ProgID '{self.config.prog_id}'. "
-                            f"Either {self.cad_type.upper()} is not installed or the ProgID is incorrect. "
+                            f"Either {self.cad_type.upper()} is not installed or the "
+                            f"ProgID is incorrect. "
                             f"Check config.json and ensure the application is installed."
                         )
                     else:
                         error_msg = str(com_err)
-                    logger.error(
-                        f"Failed to create {self.cad_type} instance: {error_msg}"
-                    )
+                    logger.error(f"Failed to create {self.cad_type} instance: {error_msg}")
                     raise CADConnectionError(self.cad_type, error_msg)
 
                 if self.application is not None:
@@ -119,7 +113,8 @@ class ConnectionMixin:
                         self.application.Visible = True
                     except (pywintypes.com_error, AttributeError) as e:
                         logger.debug(
-                            f"{self.cad_type} doesn't support Visible property or it's read-only: {e}"
+                            f"{self.cad_type} doesn't support Visible property or "
+                            f"it is read-only: {e}"
                         )
                 self._wait_for(
                     lambda: self.application is not None,
@@ -223,6 +218,7 @@ class ConnectionMixin:
     def check_document_change(self) -> bool:
         """
         Check if the active document in the CAD application has changed.
+
         If it has, update self.document to the new active document.
 
         Returns:

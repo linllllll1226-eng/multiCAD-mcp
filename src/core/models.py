@@ -4,8 +4,10 @@ Pydantic models for data validation in multiCAD-MCP.
 Provides runtime validation for coordinates, colors, layers, and drawing requests.
 """
 
-from typing import Tuple, Optional, Union, List
+from typing import List, Optional, Tuple, Union
+
 from pydantic import BaseModel, Field, field_validator, model_validator
+
 from mcp_tools.constants import COLOR_MAP
 
 
@@ -33,9 +35,7 @@ class CoordinateModel(BaseModel):
         elif len(coord) == 3:
             return cls(x=coord[0], y=coord[1], z=coord[2])
         else:
-            raise ValueError(
-                f"Coordinate must be 2D or 3D tuple, got {len(coord)} elements"
-            )
+            raise ValueError(f"Coordinate must be 2D or 3D tuple, got {len(coord)} elements")
 
     def to_tuple_3d(self) -> Tuple[float, float, float]:
         """Convert to 3D tuple (always returns 3 elements)."""
@@ -64,9 +64,7 @@ class ColorValidator(BaseModel):
         color: Color name (e.g., 'red', 'blue') or ACI index (0-256)
     """
 
-    color: Union[str, int] = Field(
-        default="white", description="Color name or ACI index"
-    )
+    color: Union[str, int] = Field(default="white", description="Color name or ACI index")
 
     @field_validator("color")
     @classmethod
@@ -77,9 +75,7 @@ class ColorValidator(BaseModel):
             color_name = v.lower().replace(" ", "_")
             if color_name not in COLOR_MAP:
                 valid_colors = ", ".join(sorted(COLOR_MAP.keys()))
-                raise ValueError(
-                    f"Invalid color name '{v}'. Valid colors: {valid_colors}"
-                )
+                raise ValueError(f"Invalid color name '{v}'. Valid colors: {valid_colors}")
             return color_name
         elif isinstance(v, int):
             # Validate ACI index range (0-256)
@@ -231,9 +227,7 @@ class DrawArcRequest(BaseModel):
 
     center: Tuple[float, float] | Tuple[float, float, float]
     radius: float = Field(gt=0)
-    start_angle: float = Field(
-        ge=0, lt=360, description="Start angle in degrees (0-360)"
-    )
+    start_angle: float = Field(ge=0, lt=360, description="Start angle in degrees (0-360)")
     end_angle: float = Field(ge=0, lt=360, description="End angle in degrees (0-360)")
     layer: str = "0"
     color: Union[str, int] = "white"
@@ -271,9 +265,7 @@ class DrawRectangleRequest(BaseModel):
 
         # Ensure corners are different
         if c1.x == c2.x or c1.y == c2.y:
-            raise ValueError(
-                "Rectangle corners must form a valid rectangle (different x and y)"
-            )
+            raise ValueError("Rectangle corners must form a valid rectangle (different x and y)")
 
         ColorValidator(color=self.color)
         LayerValidator(layer=self.layer)
@@ -491,14 +483,14 @@ class DrawLeaderRequest(BaseModel):
         min_length=2, description="At least 2 points required for a leader"
     )
     text: Optional[str] = Field(default=None, description="Optional annotation text")
-    text_height: float = Field(
-        gt=0, default=2.5, description="Height of annotation text"
-    )
+    text_height: float = Field(gt=0, default=2.5, description="Height of annotation text")
     layer: str = "0"
     color: Union[str, int] = "white"
     leader_type: str = Field(
         default="line_with_arrow",
-        description="Leader type: line_with_arrow, line_no_arrow, spline_with_arrow, spline_no_arrow",
+        description=(
+            "Leader type: line_with_arrow, line_no_arrow, spline_with_arrow, spline_no_arrow"
+        ),
     )
 
     @model_validator(mode="after")
@@ -540,9 +532,7 @@ class DrawMLeaderRequest(BaseModel):
         description="List of leader line point groups (minimum 1 line, each with 2+ points)",
     )
     text: Optional[str] = Field(default=None, description="Optional annotation text")
-    text_height: float = Field(
-        gt=0, default=2.5, description="Height of annotation text"
-    )
+    text_height: float = Field(gt=0, default=2.5, description="Height of annotation text")
     layer: str = "0"
     color: Union[str, int] = "white"
     arrow_style: str = Field(
@@ -559,9 +549,7 @@ class DrawMLeaderRequest(BaseModel):
         # Validate each leader group has at least 2 points
         for i, group in enumerate(self.leader_groups):
             if len(group) < 2:
-                raise ValueError(
-                    f"Leader group {i} has {len(group)} points, minimum 2 required"
-                )
+                raise ValueError(f"Leader group {i} has {len(group)} points, minimum 2 required")
             for point in group:
                 CoordinateModel.from_tuple(point)
 
@@ -582,9 +570,13 @@ class DrawTableRequest(BaseModel):
     num_cols: int = Field(gt=0, description="Number of columns must be positive")
     row_height: float = Field(gt=0, default=3.0, description="Row height must be positive")
     col_width: float = Field(gt=0, default=15.0, description="Column width must be positive")
-    data: Optional[List[List[str]]] = Field(default=None, description="2D list of cell values for data cells")
+    data: Optional[List[List[str]]] = Field(
+        default=None, description="2D list of cell values for data cells"
+    )
     title: Optional[str] = Field(default=None, description="Table title (placed in row 0)")
-    headers: Optional[List[str]] = Field(default=None, description="Table column headers (placed in row 1)")
+    headers: Optional[List[str]] = Field(
+        default=None, description="Table column headers (placed in row 1)"
+    )
     layer: str = "0"
     color: Union[str, int] = "white"
 

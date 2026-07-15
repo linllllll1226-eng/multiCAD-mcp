@@ -124,7 +124,5 @@ def test_required_schema_columns_exist(tmp_path):
     }
     with store._connection() as connection:
         for table, required_columns in expected.items():
-            actual_columns = {
-                row[1] for row in connection.execute(f"PRAGMA table_info({table})")
-            }
+            actual_columns = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
             assert required_columns <= actual_columns

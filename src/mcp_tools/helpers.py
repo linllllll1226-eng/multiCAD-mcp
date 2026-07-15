@@ -10,11 +10,11 @@ Includes:
 """
 
 import logging
-import sys
 import os
 import re
+import sys
 
-from core import get_config, InvalidParameterError
+from core import InvalidParameterError, get_config
 
 # ========== Setup Functions ==========
 
@@ -60,6 +60,7 @@ _COORD_PATTERN = re.compile(r"(-?\d+\.?\d*)")
 def parse_coordinate(coord_str: str) -> tuple:
     """
     Parse coordinate string like "x,y" or "x,y,z" to tuple.
+
     Uses precompiled regex for efficiency.
 
     Args:
@@ -74,9 +75,7 @@ def parse_coordinate(coord_str: str) -> tuple:
     matches = _COORD_PATTERN.findall(coord_str)
 
     if len(matches) < 2:
-        raise InvalidParameterError(
-            "coordinate", coord_str, "format like '10,20' or '10,20,30'"
-        )
+        raise InvalidParameterError("coordinate", coord_str, "format like '10,20' or '10,20,30'")
 
     return tuple(float(m) for m in matches[:3])
 

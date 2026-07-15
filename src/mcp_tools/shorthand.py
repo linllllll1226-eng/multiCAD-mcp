@@ -18,7 +18,6 @@ from typing import Any, Dict, List, Tuple, Union
 
 from mcp_tools.validator import autocorrect_spec
 
-
 # Type alias for field definitions: (field_name, required, default_value)
 FieldDef = Tuple[str, bool, Any]
 FieldList = List[FieldDef]

@@ -23,7 +23,7 @@ SHORTHAND FORMAT (one per line):
     - Use '~~' to separate multiple arrow groups.
     - Each group must have at least 2 points.
 
-    Examples:
+Examples:
         Single arrow: leader|10,10;50,50|Label
                       -> Arrow at 10,10, Text at 50,50
 
@@ -34,26 +34,25 @@ SHORTHAND FORMAT (one per line):
 
 import json
 import logging
-from typing import Optional, Dict, Any, Callable, List, Tuple
-
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from pydantic import ValidationError
 
 from core.models import (
-    DrawLineRequest,
-    DrawCircleRequest,
     DrawArcRequest,
-    DrawRectangleRequest,
-    DrawPolylineRequest,
-    DrawTextRequest,
-    DrawSplineRequest,
+    DrawCircleRequest,
+    DrawLineRequest,
     DrawMLeaderRequest,
+    DrawPolylineRequest,
+    DrawRectangleRequest,
+    DrawSplineRequest,
     DrawTableRequest,
+    DrawTextRequest,
 )
 from mcp_tools.decorators import cad_tool, get_current_adapter
-from mcp_tools.strict_mode import assert_legacy_action_allowed
 from mcp_tools.helpers import parse_coordinate
 from mcp_tools.shorthand import parse_drawing_input
+from mcp_tools.strict_mode import assert_legacy_action_allowed
 
 logger = logging.getLogger(__name__)
 
@@ -316,9 +315,7 @@ def _draw_leader_unified(spec: Dict[str, Any]) -> str:
             for group_str in groups_str.split("~~"):
                 group_str = group_str.strip()
                 if group_str:
-                    group_points = [
-                        parse_coordinate(p.strip()) for p in group_str.split(";")
-                    ]
+                    group_points = [parse_coordinate(p.strip()) for p in group_str.split(";")]
                     if group_points:
                         leader_groups.append(group_points)
 
@@ -342,9 +339,7 @@ def _draw_leader_unified(spec: Dict[str, Any]) -> str:
                     # Shorthand might have converted ; to | already
                     clean_str = group_str.replace(";", "|")
                     group_points = [
-                        parse_coordinate(p.strip())
-                        for p in clean_str.split("|")
-                        if p.strip()
+                        parse_coordinate(p.strip()) for p in clean_str.split("|") if p.strip()
                     ]
 
                     if len(group_points) < 2:
@@ -358,9 +353,7 @@ def _draw_leader_unified(spec: Dict[str, Any]) -> str:
             # Simple single-arrow shorthand
             # Treat the whole points string as one group
             clean_str = points_or_groups.replace(";", "|")
-            group_points = [
-                parse_coordinate(p.strip()) for p in clean_str.split("|") if p.strip()
-            ]
+            group_points = [parse_coordinate(p.strip()) for p in clean_str.split("|") if p.strip()]
             if group_points:
                 leader_groups.append(group_points)
 
@@ -379,9 +372,7 @@ def _draw_leader_unified(spec: Dict[str, Any]) -> str:
     elif base_pt is None:
         base_pt = (0.0, 0.0, 0.0)
 
-    logger.info(
-        f"Unified Leader Groups Parsed: {len(leader_groups)} groups. Spec: {leader_groups}"
-    )
+    logger.info(f"Unified Leader Groups Parsed: {len(leader_groups)} groups. Spec: {leader_groups}")
 
     text_height_val = spec.get("text_height")
     if text_height_val is None:
@@ -424,11 +415,11 @@ def _draw_table(spec: Dict[str, Any]) -> str:
         Entity handle string for the created table.
     """
     ins_pt = parse_coordinate(spec["insertion_point"])
-    
+
     headers = spec.get("headers")
     if isinstance(headers, str):
         headers = [h.strip() for h in headers.split(";") if h.strip()]
-        
+
     data = spec.get("data")
     if isinstance(data, str):
         parsed_data = []
@@ -451,7 +442,7 @@ def _draw_table(spec: Dict[str, Any]) -> str:
         color=spec.get("color", "white"),
         layer=spec.get("layer", "0"),
     )
-    
+
     return get_current_adapter().draw_table(
         validated.insertion_point,
         validated.num_rows,
@@ -524,7 +515,7 @@ def register_drawing_tools(mcp):
 
                 DEFAULTS: color=white, layer=0
 
-                Example:
+        Example:
                     line|0,0|100,0|red|walls
                     line|100,0|100,80|red|walls
                     circle|50,40|10|blue
@@ -636,9 +627,7 @@ def register_drawing_tools(mcp):
                 )
             except ValidationError as e:
                 error_msg = f"Validation error: {e.errors()[0]['msg']}"
-                logger.error(
-                    f"Validation error for entity {i} ({entity_type}): {error_msg}"
-                )
+                logger.error(f"Validation error for entity {i} ({entity_type}): {error_msg}")
                 results.append(
                     {
                         "index": i,

@@ -11,16 +11,15 @@ Covers all non-content operations: connection lifecycle, view, and history.
 import json
 import logging
 import webbrowser
-from typing import Optional, Dict, Any, Callable, List, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-
-from core import get_supported_cads, CADConnectionError, get_config
 from adapters.adapter_manager import (
-    get_cad_instances,
-    get_adapter,
-    shutdown_all,
     auto_detect_cad,
+    get_adapter,
+    get_cad_instances,
+    shutdown_all,
 )
+from core import CADConnectionError, get_config, get_supported_cads
 from mcp_tools.strict_mode import assert_legacy_action_allowed
 
 logger = logging.getLogger(__name__)
@@ -295,7 +294,7 @@ def register_session_tools(mcp):
                 Dashboard:
                 - open_dashboard: [host, port] — open web dashboard in browser (default from config.json)
 
-                Example:
+        Example:
                 [
                     {"action": "connect"},
                     {"action": "zoom_extents"},
@@ -308,9 +307,7 @@ def register_session_tools(mcp):
             JSON result with per-operation status
         """
         try:
-            ops_data = (
-                json.loads(operations) if isinstance(operations, str) else operations
-            )
+            ops_data = json.loads(operations) if isinstance(operations, str) else operations
             if not isinstance(ops_data, list):
                 ops_data = [ops_data]
         except json.JSONDecodeError as e:

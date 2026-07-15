@@ -5,7 +5,7 @@ Handles entity property operations.
 """
 
 import logging
-from typing import Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict
 
 logger = logging.getLogger(__name__)
 

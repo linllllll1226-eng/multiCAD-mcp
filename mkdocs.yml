@@ -74,6 +74,7 @@ nav:
       - Safety Hardening: CAD_SAFETY_HARDENING.md
       - Usability Layer: CAD_UX_IMPROVEMENTS.md
       - Vision Pipeline: CAD_VISION_PIPELINE.md
+      - Scanned Drawing OCR: CAD_OCR.md
       - Vision Benchmark: CAD_VISION_BENCHMARK.md
   - Web Dashboard: 06-WEB-DASHBOARD.md
   - API Reference:

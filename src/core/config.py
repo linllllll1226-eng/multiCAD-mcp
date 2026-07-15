@@ -1,13 +1,15 @@
 """
 Centralized configuration for multiCAD-MCP server.
+
 Loads from config.json with fallback defaults.
 """
 
 import json
 import threading
-from pathlib import Path
-from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from .exceptions import ConfigError
 
 
@@ -56,6 +58,7 @@ class ConfigManager:
     _lock = threading.Lock()  # Class-level lock for singleton instantiation
 
     def __new__(cls):
+        """Return the process-wide configuration manager instance."""
         if cls._instance is None:
             with cls._lock:  # Acquire lock for singleton creation
                 if cls._instance is None:
@@ -201,8 +204,7 @@ class ConfigManager:
         if config is None:
             raise ConfigError(
                 "config.json",
-                f"CAD type '{cad_type}' not configured. "
-                f"Available: {list(self.config.cad.keys())}",
+                f"CAD type '{cad_type}' not configured. Available: {list(self.config.cad.keys())}",
             )
         return config
 

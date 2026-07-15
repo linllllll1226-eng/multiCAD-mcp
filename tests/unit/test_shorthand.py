@@ -11,21 +11,16 @@ Tests all shorthand parsing scenarios including:
 - Multi-line and semicolon-separated inputs
 """
 
-import pytest
-
 from mcp_tools.shorthand import (
-    parse_drawing_input,
-    parse_entity_ops_input,
-    parse_layer_ops_input,
-    parse_block_ops_input,
-    parse_file_ops_input,
-    parse_entity_shorthand,
-    parse_entity_op_shorthand,
-    parse_layer_op_shorthand,
     parse_block_op_shorthand,
+    parse_drawing_input,
+    parse_entity_op_shorthand,
+    parse_entity_ops_input,
+    parse_entity_shorthand,
     parse_file_op_shorthand,
+    parse_layer_op_shorthand,
+    parse_layer_ops_input,
 )
-
 
 # ========== Drawing Entity Tests ==========
 

@@ -74,14 +74,10 @@ def _identity_matches(record: dict[str, Any], document: Any) -> bool:
     return not recorded_name or recorded_name.casefold() == current_name.casefold()
 
 
-def _assert_document_identity(
-    record: dict[str, Any], document: Any, *, source: str
-) -> None:
+def _assert_document_identity(record: dict[str, Any], document: Any, *, source: str) -> None:
     if not _identity_matches(record, document):
         current = document_identity(document)
-        recorded_label = record.get("drawing_full_name") or record.get(
-            "drawing_name"
-        )
+        recorded_label = record.get("drawing_full_name") or record.get("drawing_name")
         active_label = current["drawing_full_name"] or current["drawing_name"]
         raise PermissionError(
             f"{source} belongs to a different drawing: "
@@ -137,9 +133,7 @@ class TaskTrackingManager:
         for task in tasks:
             drawing_match = _identity_matches(task, document)
             task["active_drawing_match"] = drawing_match
-            task["recorded_entity_count"] = self.store.count_ai_task_entities(
-                task["task_id"]
-            )
+            task["recorded_entity_count"] = self.store.count_ai_task_entities(task["task_id"])
             task["active_entity_count"] = 0 if not drawing_match else None
             if drawing_match and include_active_counts:
                 active = 0
@@ -192,9 +186,7 @@ class TaskTrackingManager:
             try:
                 entity = document.HandleToObject(row["handle"])
                 metadata = read_entity_provenance(entity)
-                if row["owned"] and (
-                    not metadata or metadata.get("task_id") != task_id
-                ):
+                if row["owned"] and (not metadata or metadata.get("task_id") != task_id):
                     raise PermissionError("Entity provenance does not match task")
                 payload = dict(row)
                 if include_actual:
@@ -256,9 +248,7 @@ class TaskTrackingManager:
             if not target_layer:
                 raise ValueError(f"No formal layer mapping for {source_layer}")
             if row["approximate_reference"] and target_layer != "AI_UNCERTAIN":
-                raise PermissionError(
-                    "Approximate reference geometry cannot enter a formal layer"
-                )
+                raise PermissionError("Approximate reference geometry cannot enter a formal layer")
             try:
                 _get_layer(document, target_layer)
             except ValueError:
@@ -462,7 +452,7 @@ class TaskTrackingManager:
 
     @staticmethod
     def _snapshot(
-        owned: list[tuple[dict[str, Any], Any, dict[str, Any]]]
+        owned: list[tuple[dict[str, Any], Any, dict[str, Any]]],
     ) -> dict[str, dict[str, Any]]:
         return {
             row["handle"]: {
@@ -479,9 +469,7 @@ class TaskTrackingManager:
     ) -> None:
         for row, entity, _metadata in owned:
             if _geometry_signature(entity) != snapshots[row["handle"]]["geometry"]:
-                raise RuntimeError(
-                    f"Task operation changed geometry for handle {row['handle']}"
-                )
+                raise RuntimeError(f"Task operation changed geometry for handle {row['handle']}")
 
     @staticmethod
     def _restore_entities(

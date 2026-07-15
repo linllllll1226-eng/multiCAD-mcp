@@ -16,8 +16,7 @@ SHORTHAND FORMAT (one per line):
 import json
 import logging
 import os
-from typing import Optional, Dict, Any, Callable, List, Tuple
-
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core import get_config
 from mcp_tools.decorators import cad_tool, get_current_adapter
@@ -44,9 +43,7 @@ def _save(spec: Dict[str, Any]) -> Dict[str, Any]:
     filename = spec.get("filename", "")
     fmt = spec.get("format", "dwg")
 
-    success = get_current_adapter().save_drawing(
-        filepath=filepath, filename=filename, format=fmt
-    )
+    success = get_current_adapter().save_drawing(filepath=filepath, filename=filename, format=fmt)
 
     if success:
         if filepath:
@@ -207,7 +204,7 @@ def register_file_tools(mcp):
                 "format" = "dwg" (default), "dxf", "pdf"
                 "save_changes" = true/false (default: false)
 
-                Example:
+        Example:
                     save|backup.dwg
                     new
                     switch|floor_plan.dwg

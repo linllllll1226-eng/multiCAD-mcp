@@ -48,9 +48,7 @@ async def sync_profiles(
             rows: list[dict[str, Any]] = []
             for profile in profiles:
                 arguments = memory_tool_arguments(profile)
-                saved = await _call_json(
-                    session, "cad_save_drawing_profile", arguments
-                )
+                saved = await _call_json(session, "cad_save_drawing_profile", arguments)
                 loaded = await _call_json(
                     session,
                     "cad_load_drawing_profile",
@@ -59,10 +57,8 @@ async def sync_profiles(
                 passed = (
                     loaded["name"] == profile["name"]
                     and loaded["unit"] == profile["unit"]
-                    and loaded["layer_rules"]
-                    == json.loads(arguments["layer_rules_json"])
-                    and loaded["dimension_rules"]
-                    == json.loads(arguments["dimension_rules_json"])
+                    and loaded["layer_rules"] == json.loads(arguments["layer_rules_json"])
+                    and loaded["dimension_rules"] == json.loads(arguments["dimension_rules_json"])
                 )
                 rows.append(
                     {
@@ -78,12 +74,8 @@ def main() -> None:
     """Validate profiles by default and sync them only with --apply."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true")
-    parser.add_argument(
-        "--profile-dir", default=str(ROOT / "data" / "profiles")
-    )
-    parser.add_argument(
-        "--python", default=str(ROOT / ".venv" / "Scripts" / "python.exe")
-    )
+    parser.add_argument("--profile-dir", default=str(ROOT / "data" / "profiles"))
+    parser.add_argument("--python", default=str(ROOT / ".venv" / "Scripts" / "python.exe"))
     parser.add_argument("--server", default=str(ROOT / "src" / "server_memory.py"))
     args = parser.parse_args()
     profiles = load_profiles(args.profile_dir)

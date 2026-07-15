@@ -6,9 +6,9 @@ Handles block creation and management operations.
 
 import logging
 import math
-from typing import List, Any, Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List
 
-from core import CADInterface, CADOperationError, InvalidParameterError, Coordinate
+from core import CADInterface, CADOperationError, Coordinate, InvalidParameterError
 
 if TYPE_CHECKING:
     from core import Point
@@ -35,9 +35,7 @@ class BlockMixin:
 
         def _track_entity(self, entity: Any, entity_type: str) -> None: ...
 
-        def _safe_get_property(
-            self, obj: Any, property_name: str, default: Any = None
-        ) -> Any: ...
+        def _safe_get_property(self, obj: Any, property_name: str, default: Any = None) -> Any: ...
 
         def refresh_view(self) -> bool: ...
         def _apply_properties(
@@ -330,7 +328,8 @@ class BlockMixin:
                 available_blocks = self.list_blocks()
                 raise CADOperationError(
                     "insert_block",
-                    f"Block '{block_name}' not found. Available blocks: {', '.join(available_blocks)}",
+                    f"Block '{block_name}' not found. "
+                    f"Available blocks: {', '.join(available_blocks)}",
                 )
 
             # Insert the block
@@ -347,11 +346,7 @@ class BlockMixin:
             self._apply_properties(block_ref, layer, color)
 
             # Set attributes if provided
-            if (
-                attributes
-                and hasattr(block_ref, "HasAttributes")
-                and block_ref.HasAttributes
-            ):
+            if attributes and hasattr(block_ref, "HasAttributes") and block_ref.HasAttributes:
                 try:
                     attr_lookup = {k.upper(): v for k, v in attributes.items()}
                     for attr in block_ref.GetAttributes():
@@ -421,9 +416,10 @@ class BlockMixin:
             Dictionary mapping block names to insertion counts
         """
         import time
+        from contextlib import contextmanager
+
         import pythoncom
         import win32com.client
-        from contextlib import contextmanager
 
         try:
             self._validate_connection()
@@ -510,9 +506,7 @@ class BlockMixin:
             # Get block origin
             try:
                 origin = block_obj.Origin
-                origin_coords = (
-                    (origin[0], origin[1], origin[2]) if origin else (0, 0, 0)
-                )
+                origin_coords = (origin[0], origin[1], origin[2]) if origin else (0, 0, 0)
             except Exception:
                 origin_coords = (0, 0, 0)
 
@@ -568,20 +562,12 @@ class BlockMixin:
                                 insertion_point = (0, 0, 0)
 
                             # Get scale factors
-                            scale_x = self._safe_get_property(
-                                entity, "XScaleFactor", 1.0
-                            )
-                            scale_y = self._safe_get_property(
-                                entity, "YScaleFactor", 1.0
-                            )
-                            scale_z = self._safe_get_property(
-                                entity, "ZScaleFactor", 1.0
-                            )
+                            scale_x = self._safe_get_property(entity, "XScaleFactor", 1.0)
+                            scale_y = self._safe_get_property(entity, "YScaleFactor", 1.0)
+                            scale_z = self._safe_get_property(entity, "ZScaleFactor", 1.0)
 
                             # Get rotation (convert from radians to degrees)
-                            rotation_rad = self._safe_get_property(
-                                entity, "Rotation", 0.0
-                            )
+                            rotation_rad = self._safe_get_property(entity, "Rotation", 0.0)
                             rotation_deg = rotation_rad * 180.0 / math.pi
 
                             ref_info = {
@@ -589,9 +575,7 @@ class BlockMixin:
                                 "InsertionPoint": insertion_point,
                                 "ScaleFactors": (scale_x, scale_y, scale_z),
                                 "Rotation": round(rotation_deg, 2),
-                                "Layer": str(
-                                    self._safe_get_property(entity, "Layer", "0")
-                                ),
+                                "Layer": str(self._safe_get_property(entity, "Layer", "0")),
                             }
                             references.append(ref_info)
 
@@ -662,9 +646,7 @@ class BlockMixin:
                 if tag_upper in attr_lookup:
                     attr.TextString = str(attr_lookup[tag_upper])
                     set_count += 1
-                    logger.debug(
-                        f"Set attribute {attr.TagString} = {attr_lookup[tag_upper]}"
-                    )
+                    logger.debug(f"Set attribute {attr.TagString} = {attr_lookup[tag_upper]}")
 
             self.refresh_view()
             logger.info(f"Set {set_count} attributes on block {handle}")

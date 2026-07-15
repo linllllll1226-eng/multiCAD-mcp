@@ -15,8 +15,7 @@ SHORTHAND FORMAT (one per line):
 
 import json
 import logging
-from typing import Optional, Dict, Any, Callable, List, Tuple
-
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from mcp_tools.decorators import cad_tool, get_current_adapter
 from mcp_tools.helpers import parse_coordinate
@@ -286,7 +285,7 @@ def register_block_tools(mcp) -> None:
 
                 DEFAULTS: scale=1.0, rotation=0, layer=0, color=white, include=info
 
-                Examples:
+        Examples:
                     list
                     info|Door|both
                     insert|Door|10,20|1.5|90

@@ -4,13 +4,14 @@ Security tests for multiCAD-MCP.
 Tests for path traversal prevention, command injection prevention, and thread safety.
 """
 
-import pytest
-import threading
 import tempfile
+import threading
 from pathlib import Path
-from unittest.mock import MagicMock, patch, Mock
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 from src.adapters import AutoCADAdapter
-from src.core import CADOperationError, InvalidParameterError
 from src.adapters.adapter_manager import AdapterRegistry
 
 
@@ -145,8 +146,6 @@ class TestThreadSafety:
         first_instance = instances[0]
         for instance in instances[1:]:
             assert instance is first_instance
-
-
 
     def test_config_manager_thread_safe(self):
         """Test that ConfigManager singleton is thread-safe."""

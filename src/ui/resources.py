@@ -49,9 +49,7 @@ def create_cad_ui_resource(
         UI resource dictionary compatible with MCP Apps
     """
     # Inject data into template
-    html_content = template.replace(
-        "/*DATA_PLACEHOLDER*/[]", json.dumps(data, ensure_ascii=False)
-    )
+    html_content = template.replace("/*DATA_PLACEHOLDER*/[]", json.dumps(data, ensure_ascii=False))
 
     return {
         "uri": f"ui://multicad/{resource_name}",

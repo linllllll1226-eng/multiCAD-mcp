@@ -17,8 +17,7 @@ SHORTHAND FORMAT (one per line):
 
 import json
 import logging
-from typing import Optional, Dict, Any, Callable, List, Tuple
-
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from pydantic import ValidationError
 
@@ -199,7 +198,6 @@ def _info(spec: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Dict with keys: success (bool), count (int), layers (list).
     """
-
     adapter = get_current_adapter()
     layer_names = adapter.list_layers()
 
@@ -298,7 +296,7 @@ def register_layer_tools(mcp):
 
                 DEFAULTS: color=white, lineweight=25
 
-                Example:
+        Example:
                     create|walls|red
                     create|doors|blue
                     off|Defpoints,notes
@@ -387,9 +385,7 @@ def register_layer_tools(mcp):
                 results.append({"index": i, "action": action_lower, **result})
             except ValidationError as e:
                 error_msg = f"Validation error: {e.errors()[0]['msg']}"
-                logger.error(
-                    f"Validation error in layer op {i} ({action_lower}): {error_msg}"
-                )
+                logger.error(f"Validation error in layer op {i} ({action_lower}): {error_msg}")
                 results.append(
                     {
                         "index": i,

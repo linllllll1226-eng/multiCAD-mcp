@@ -112,6 +112,4 @@ def test_validator_blocks_unit_mismatch_and_warns_for_unitless():
         drawing_unit="unitless",
     )
     assert unitless.passed
-    assert any(
-        issue.code == "drawing_unit_unitless" for issue in unitless.warnings
-    )
+    assert any(issue.code == "drawing_unit_unitless" for issue in unitless.warnings)

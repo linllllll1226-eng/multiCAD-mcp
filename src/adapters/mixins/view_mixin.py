@@ -4,14 +4,15 @@ View mixin for AutoCAD adapter.
 Handles view operations (zoom, refresh, undo, redo).
 """
 
-import logging
 import base64
+import logging
 import os
-import time
 import re
-import win32gui
-import win32con
+import time
 from typing import TYPE_CHECKING, Dict
+
+import win32con
+import win32gui
 from PIL import ImageGrab
 
 logger = logging.getLogger(__name__)
@@ -31,9 +32,7 @@ class ViewMixin:
         def _get_document(self, operation: str = "operation") -> Any: ...
         def _simulate_autocad_click(self) -> bool: ...
         def _validate_connection(self) -> None: ...
-        def resolve_export_path(
-            self, filename: str, folder_type: str = "drawings"
-        ) -> str: ...
+        def resolve_export_path(self, filename: str, folder_type: str = "drawings") -> str: ...
 
     def _sanitize_command_input(self, user_input: str) -> str:
         """Sanitize input for SendCommand to prevent command injection.
@@ -68,7 +67,7 @@ class ViewMixin:
         Raises:
             Exception: If CAD window cannot be found
         """
-        from mcp_tools.constants import CAD_WINDOW_SEARCH_TERMS, AUTOCAD_WINDOW_CLASSES
+        from mcp_tools.constants import AUTOCAD_WINDOW_CLASSES, CAD_WINDOW_SEARCH_TERMS
 
         search_term = CAD_WINDOW_SEARCH_TERMS.get(self.cad_type, "")
         hwnd = 0
@@ -88,9 +87,7 @@ class ViewMixin:
             # Exclude VBA editor and other non-main windows
             if title_match and class_match and "VBA" not in title:
                 hwnd = h
-                logger.debug(
-                    f"Found CAD window: title='{title}', class='{class_name}', hwnd={h}"
-                )
+                logger.debug(f"Found CAD window: title='{title}', class='{class_name}', hwnd={h}")
 
         win32gui.EnumWindows(enum_windows_callback, None)
 
@@ -214,9 +211,7 @@ class ViewMixin:
             # Verify file was created
             if not os.path.exists(filepath):
                 # Try fallback: maybe it didn't like _ALL, try just \n\n
-                logger.debug(
-                    "PNGOUT with _ALL failed, trying with default selection..."
-                )
+                logger.debug("PNGOUT with _ALL failed, trying with default selection...")
                 safe_path_fallback = self._sanitize_command_input(filepath_cad)
                 document.SendCommand(f"_PNGOUT\n{safe_path_fallback}\n\n")
                 time.sleep(1.5)

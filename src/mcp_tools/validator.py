@@ -12,7 +12,6 @@ Provides:
 import difflib
 from typing import Any, Dict, List, Optional, Union
 
-
 # ========== Color Constants ==========
 
 VALID_COLORS = [
@@ -79,9 +78,7 @@ def fuzzy_match_color(color_input: str, threshold: float = 0.6) -> str:
         pass
 
     # Fuzzy match
-    matches = difflib.get_close_matches(
-        color_lower, VALID_COLORS, n=1, cutoff=threshold
-    )
+    matches = difflib.get_close_matches(color_lower, VALID_COLORS, n=1, cutoff=threshold)
 
     if matches:
         return matches[0]

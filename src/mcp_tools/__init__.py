@@ -12,15 +12,16 @@ Modules:
 Note: Adapter management has been moved to adapters.adapter_manager
 """
 
-from .constants import COLOR_MAP
-from .helpers import parse_coordinate, parse_handles, result_message
-from .decorators import cad_tool, get_current_adapter, set_current_adapter
 from adapters.adapter_manager import (
-    get_adapter,
-    get_active_cad_type,
-    set_active_cad_type,
     auto_detect_cad,
+    get_active_cad_type,
+    get_adapter,
+    set_active_cad_type,
 )
+
+from .constants import COLOR_MAP
+from .decorators import cad_tool, get_current_adapter, set_current_adapter
+from .helpers import parse_coordinate, parse_handles, result_message
 
 __all__ = [
     "COLOR_MAP",

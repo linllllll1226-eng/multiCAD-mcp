@@ -5,38 +5,38 @@ Contains helper methods, decorators, context managers, and utility classes.
 """
 
 import logging
-import time
 import math
 import os
-from pathlib import Path
-from typing import Any, Callable, TypeVar, List, Optional, TYPE_CHECKING
-from functools import wraps
-from contextlib import contextmanager
 import sys
+import time
+from contextlib import contextmanager
+from functools import wraps
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, TypeVar
 
 import core as core_module
 
 if sys.platform == "win32":
-    import win32com.client
     import pythoncom
-    import win32gui
-    import win32api
-    import win32con
     import pywintypes
+    import win32api
+    import win32com.client
+    import win32con
+    import win32gui
 else:
     raise ImportError("AutoCAD adapter requires Windows OS with COM support")
 
 from core import (
-    CADOperationError,
     CADConnectionError,
+    CADOperationError,
     InvalidParameterError,
     Point,
 )
 from mcp_tools.constants import (
-    COLOR_MAP,
     AUTOCAD_WINDOW_CLASSES,
     CLICK_DELAY,
     CLICK_HOLD_DELAY,
+    COLOR_MAP,
 )
 
 logger = logging.getLogger(__name__)
@@ -204,9 +204,7 @@ class UtilityMixin:
             # Simple ping to verify COM proxy is still valid for THIS thread
             _ = self.application.Visible
         except Exception as e:
-            logger.debug(
-                f"Connection validation failed (thread {threading.get_ident()}): {e}"
-            )
+            logger.debug(f"Connection validation failed (thread {threading.get_ident()}): {e}")
             from .connection_mixin import ConnectionMixin
 
             if isinstance(self, ConnectionMixin):
@@ -218,9 +216,7 @@ class UtilityMixin:
         if self.application is None:
             from core import CADConnectionError
 
-            raise CADConnectionError(
-                self.cad_type, f"No active instance for '{operation}'"
-            )
+            raise CADConnectionError(self.cad_type, f"No active instance for '{operation}'")
         return self.application
 
     def _get_document(self, operation: str = "operation") -> Any:
@@ -308,9 +304,7 @@ class UtilityMixin:
         Returns:
             VARIANT array of COM objects for CopyObjects method
         """
-        return win32com.client.VARIANT(
-            pythoncom.VT_ARRAY | pythoncom.VT_DISPATCH, objects
-        )
+        return win32com.client.VARIANT(pythoncom.VT_ARRAY | pythoncom.VT_DISPATCH, objects)
 
     def _int_array_to_variant(self, values: tuple | list) -> Any:
         """Convert list of integers to COM variant array (for DXF filter codes)."""
@@ -329,9 +323,7 @@ class UtilityMixin:
             else:
                 variant_list.append(str(val))
 
-        return win32com.client.VARIANT(
-            pythoncom.VT_ARRAY | pythoncom.VT_VARIANT, variant_list
-        )
+        return win32com.client.VARIANT(pythoncom.VT_ARRAY | pythoncom.VT_VARIANT, variant_list)
 
     def _to_radians(self, degrees: float) -> float:
         """Convert degrees to radians."""
@@ -373,9 +365,7 @@ class UtilityMixin:
         except Exception as e:
             logger.warning(f"Failed to track entity: {e}")
 
-    def _safe_get_property(
-        self, obj: Any, property_name: str, default: Any = None
-    ) -> Any:
+    def _safe_get_property(self, obj: Any, property_name: str, default: Any = None) -> Any:
         """Safely get a COM object property with fallback value.
 
         Args:
@@ -392,9 +382,7 @@ class UtilityMixin:
             logger.debug(f"Failed to get property {property_name}: {e}")
             return default
 
-    def _fast_get_property(
-        self, obj: Any, property_name: str, default: Any = None
-    ) -> Any:
+    def _fast_get_property(self, obj: Any, property_name: str, default: Any = None) -> Any:
         """Fast version of _safe_get_property without logging for bulk operations.
 
         Use this in tight loops where logging overhead is significant.
@@ -476,9 +464,7 @@ class UtilityMixin:
             str: Full absolute path to the resolved file
         """
         config = core_module.get_config()
-        configured_output = os.environ.get(
-            "MULTICAD_OUTPUT_DIR", config.output.directory
-        )
+        configured_output = os.environ.get("MULTICAD_OUTPUT_DIR", config.output.directory)
         output_dir = Path(configured_output).expanduser().resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -586,19 +572,13 @@ class UtilityMixin:
 
         if angle is not None:
             if not -360 <= angle <= 360:
-                logger.warning(
-                    f"{operation}: Angle {angle} outside normal range [-360, 360]"
-                )
+                logger.warning(f"{operation}: Angle {angle} outside normal range [-360, 360]")
 
         if points is not None:
             if not isinstance(points, (list, tuple)):
-                raise InvalidParameterError(
-                    operation, "points", "list of coordinate points"
-                )
+                raise InvalidParameterError(operation, "points", "list of coordinate points")
             if len(points) < 2:
-                raise InvalidParameterError(
-                    operation, "points", "at least 2 coordinate points"
-                )
+                raise InvalidParameterError(operation, "points", "at least 2 coordinate points")
 
     def _iterate_entities_safe(
         self,
@@ -619,9 +599,7 @@ class UtilityMixin:
         try:
             document = self._get_document(operation_name)
         except Exception as e:
-            return self._handle_operation_error(
-                operation_name, e, default_return=(0, 0)
-            )
+            return self._handle_operation_error(operation_name, e, default_return=(0, 0))
 
         success_count = 0
         total_count = 0

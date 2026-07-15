@@ -6,13 +6,13 @@ Handles all drawing operations (lines, circles, arcs, polylines, text, dimension
 
 import logging
 import math
-from typing import List, Optional, TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, List, Optional
 
 from core import (
     CADInterface,
-    InvalidParameterError,
     CADOperationError,
     Coordinate,
+    InvalidParameterError,
     Point,
 )
 
@@ -322,9 +322,7 @@ class DrawingMixin:
         center_array = self._to_variant_array(center_pt)
         major_array = self._to_variant_array(major_end)
 
-        ellipse = document.ModelSpace.AddEllipse(
-            center_array, major_array, minor_axis_ratio
-        )
+        ellipse = document.ModelSpace.AddEllipse(center_array, major_array, minor_axis_ratio)
 
         return self._finalize_entity(
             ellipse,
@@ -332,7 +330,7 @@ class DrawingMixin:
             color,
             lineweight,
             "ellipse",
-            False,  # Always refresh for ellipse in original code, but cleaner to pass _skip_refresh if we update signature. original didn't have _skip_refresh
+            False,
             f"Drew ellipse at {center}",
         )
 
@@ -411,9 +409,7 @@ class DrawingMixin:
         boundary_polyline.Closed = True
 
         # Create hatch
-        hatch = document.ModelSpace.AddHatch(
-            0, pattern, True
-        )  # 0 = Normal, True = Associative
+        hatch = document.ModelSpace.AddHatch(0, pattern, True)  # 0 = Normal, True = Associative
         hatch.AppendOuterLoop([boundary_polyline])
         hatch.Evaluate()
 
@@ -481,9 +477,7 @@ class DrawingMixin:
             dim_position = self._to_variant_array((mid_x, mid_y, mid_z))
         else:
             # If start and end are the same, use default offset
-            dim_position = self._to_variant_array(
-                (start_pt[0] + offset, start_pt[1], start_pt[2])
-            )
+            dim_position = self._to_variant_array((start_pt[0] + offset, start_pt[1], start_pt[2]))
 
         # Use aligned dimension with offset position
         dim = document.ModelSpace.AddDimAligned(start_array, end_array, dim_position)
@@ -650,18 +644,19 @@ class DrawingMixin:
             base_point: Base point for annotation (Text Position)
             leader_groups: List of point lists, each defining one leader line.
                           Order: [ArrowHead, ..., TextPosition]
+            text: Annotation text.
+            text_height: Annotation text height.
+            layer: Target layer name.
+            color: ACI index or named color.
+            arrow_style: Arrowhead block or style name.
             _skip_refresh: Internal flag to skip view refresh (used for batch operations)
         """
-        logger.info(
-            f"draw_mleader called with {len(leader_groups)} groups: {leader_groups}"
-        )
+        logger.info(f"draw_mleader called with {len(leader_groups)} groups: {leader_groups}")
 
         document = self._get_document("draw_mleader")
 
         if not leader_groups:
-            raise InvalidParameterError(
-                "leader_groups", leader_groups, "at least 1 group"
-            )
+            raise InvalidParameterError("leader_groups", leader_groups, "at least 1 group")
 
         for i, group in enumerate(leader_groups):
             if len(group) < 2:
@@ -685,9 +680,7 @@ class DrawingMixin:
             # If we pass just base_array, it might fail if it expects more points.
             # However, typical usage is creating with the full point list of the first leader.
             first_group = leader_groups[0]
-            normalized_first_group = [
-                CADInterface.normalize_coordinate(p) for p in first_group
-            ]
+            normalized_first_group = [CADInterface.normalize_coordinate(p) for p in first_group]
             variant_first_group = self._points_to_variant_array(normalized_first_group)
 
             # Create the MLeader
@@ -759,9 +752,7 @@ class DrawingMixin:
                     cmd_parts = [f'_AIMLEADEREDITADD (handent "{mleader.Handle}")']
 
                     for group in leader_groups[1:]:
-                        normalized_group = [
-                            CADInterface.normalize_coordinate(p) for p in group
-                        ]
+                        normalized_group = [CADInterface.normalize_coordinate(p) for p in group]
 
                         # Arrow point is the FIRST point in the group (from input)
                         # We need to format it as "X,Y,Z"
@@ -809,7 +800,8 @@ class DrawingMixin:
                 0,
                 "mleader",
                 _skip_refresh,
-                f"Drew multi-leader with {len(leader_groups)} lines (arrow_style={arrow_style}, text={text})",
+                f"Drew multi-leader with {len(leader_groups)} lines "
+                f"(arrow_style={arrow_style}, text={text})",
             )
 
         except Exception as e:
@@ -889,7 +881,10 @@ class DrawingMixin:
                                 try:
                                     table.SetText(row_idx, col_idx, str(cell_value))
                                 except Exception as e:
-                                    logger.warning(f"Failed to set table cell at row {row_idx}, col {col_idx}: {e}")
+                                    logger.warning(
+                                        f"Failed to set table cell at row {row_idx}, "
+                                        f"col {col_idx}: {e}"
+                                    )
 
             try:
                 table.Update()

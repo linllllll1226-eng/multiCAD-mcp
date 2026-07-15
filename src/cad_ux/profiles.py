@@ -58,9 +58,7 @@ def validate_profile(profile: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("default_save_directory must be an absolute Windows path")
     if "AI_UNCERTAIN" not in names:
         raise ValueError("every profile must define AI_UNCERTAIN")
-    if profile["force_preview"] and not any(
-        name.startswith("AI_PREVIEW_") for name in names
-    ):
+    if profile["force_preview"] and not any(name.startswith("AI_PREVIEW_") for name in names):
         raise ValueError("force_preview profiles must define preview layers")
     return profile
 

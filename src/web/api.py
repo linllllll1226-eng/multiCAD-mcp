@@ -1,3 +1,5 @@
+"""FastAPI endpoints and thread-safe cache for the optional web dashboard."""
+
 import collections
 import logging
 import threading
@@ -49,6 +51,7 @@ class _MemoryLogHandler(logging.Handler):
     """Logging handler that stores records in _LogBuffer."""
 
     def __init__(self, buffer: _LogBuffer):
+        """Attach the handler to an in-memory log buffer."""
         super().__init__()
         self._buffer = buffer
 
@@ -126,6 +129,7 @@ class DashboardCache:
     """
 
     def __init__(self):
+        """Initialize an empty dashboard snapshot and its synchronization lock."""
         self._lock = threading.Lock()
         self._data: Dict[str, Any] = {
             "connected": False,
@@ -163,7 +167,7 @@ def refresh_dashboard_cache():
     Called automatically after connect, or can be triggered manually.
     """
     try:
-        from adapters.adapter_manager import get_adapter, get_active_cad_type
+        from adapters.adapter_manager import get_active_cad_type, get_adapter
         from core import CADConnectionError
 
         try:
@@ -290,7 +294,8 @@ def refresh_dashboard_cache():
 
         logger.info(
             f"Dashboard cache refreshed: {active}, drawing '{current_drawing}' — "
-            f"Total Entities: {total_entities}, {len(layers_info)} layers, {len(blocks_info)} blocks."
+            f"Total Entities: {total_entities}, {len(layers_info)} layers, "
+            f"{len(blocks_info)} blocks."
         )
     except Exception as e:
         logger.error(f"Failed to refresh dashboard cache: {e}")
@@ -304,6 +309,7 @@ class ProjectState:
     """Project state tracking."""
 
     def __init__(self):
+        """Initialize dashboard refresh state."""
         self.last_refresh = None
 
 
@@ -311,6 +317,8 @@ state = ProjectState()
 
 
 class SwitchDrawingRequest(BaseModel):
+    """Request payload for selecting an open drawing by name."""
+
     drawing_name: str
 
 
@@ -468,20 +476,16 @@ async def api_cad_entities(
                     dxf_type = t_variant
                     break
 
-            # If still nothing after all variants, ensure we tried at least the first one for consistency
+            # Preserve the first requested type when all fallback variants are empty.
             if not entities and requested_types:
                 dxf_type = requested_types[0]
         else:
             # Global extraction
-            entities = adapter.extract_drawing_data(
-                only_selected=False, limit=limit, offset=offset
-            )
+            entities = adapter.extract_drawing_data(only_selected=False, limit=limit, offset=offset)
 
         # Get total for this specific type or global
         entity_counts = _cache.get("entity_counts", {})
-        total_items = (
-            entity_counts.get(type, 0) if type else _cache.get("total_entities", 0)
-        )
+        total_items = entity_counts.get(type, 0) if type else _cache.get("total_entities", 0)
 
         return {
             "success": True,
@@ -490,9 +494,7 @@ async def api_cad_entities(
                 "page": page,
                 "limit": limit,
                 "total": total_items,
-                "total_pages": (total_items + limit - 1) // limit
-                if total_items > 0
-                else 1,
+                "total_pages": (total_items + limit - 1) // limit if total_items > 0 else 1,
                 "type": type,
                 "dxf_type": dxf_type,
             },

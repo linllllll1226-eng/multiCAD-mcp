@@ -14,7 +14,6 @@ import json
 import logging
 from pathlib import Path
 
-
 from mcp_tools.decorators import cad_tool, get_current_adapter
 
 logger = logging.getLogger(__name__)
@@ -31,9 +30,7 @@ def _set_cell_value_safe(ws, row: int, col: int, value):
                 merged_range.min_row <= row <= merged_range.max_row
                 and merged_range.min_col <= col <= merged_range.max_col
             ):
-                ws.cell(
-                    row=merged_range.min_row, column=merged_range.min_col
-                ).value = value
+                ws.cell(row=merged_range.min_row, column=merged_range.min_col).value = value
                 return
     cell.value = value
 
@@ -41,8 +38,9 @@ def _set_cell_value_safe(ws, row: int, col: int, value):
 def _export_excel(adapter, data, filename: str, scope_label: str) -> str:
     """Shared Excel export logic for both all/selected scopes."""
     from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
+
     from core.config import get_config
 
     config = get_config()
@@ -64,9 +62,7 @@ def _export_excel(adapter, data, filename: str, scope_label: str) -> str:
             f"Security: Attempted export outside output directory. "
             f"Requested: {export_dir}, Allowed: {output_dir}"
         )
-        return json.dumps(
-            {"success": False, "error": "Invalid output directory"}, indent=2
-        )
+        return json.dumps({"success": False, "error": "Invalid output directory"}, indent=2)
 
     export_dir.mkdir(parents=True, exist_ok=True)
     full_filepath = export_dir / file_obj.name
@@ -75,9 +71,7 @@ def _export_excel(adapter, data, filename: str, scope_label: str) -> str:
     workbook = Workbook()
     worksheet = workbook.active
     if worksheet is None:
-        return json.dumps(
-            {"success": False, "error": "Failed to create worksheet"}, indent=2
-        )
+        return json.dumps({"success": False, "error": "Failed to create worksheet"}, indent=2)
 
     worksheet.title = f"{scope_label} Data"
 
@@ -94,9 +88,7 @@ def _export_excel(adapter, data, filename: str, scope_label: str) -> str:
     ]
 
     # Headers
-    header_fill = PatternFill(
-        start_color="4472C4", end_color="4472C4", fill_type="solid"
-    )
+    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
     header_font = Font(bold=True, color="FFFFFF")
 
     for col_idx, col_name in enumerate(columns, 1):
@@ -253,9 +245,7 @@ def register_export_tools(mcp):
                 return json.dumps(
                     {
                         "success": success,
-                        "message": (
-                            f"Exported to {filename}" if success else "Export failed"
-                        ),
+                        "message": (f"Exported to {filename}" if success else "Export failed"),
                     },
                     indent=2,
                 )

@@ -13,13 +13,13 @@ Contains all tool definitions organized by category:
 Legacy tools are preserved in ./legacy/ for reference.
 """
 
-from .session import register_session_tools
+from .blocks import register_block_tools
 from .drawing import register_drawing_tools
-from .layers import register_layer_tools
-from .files import register_file_tools
 from .entities import register_entity_tools
 from .export import register_export_tools
-from .blocks import register_block_tools
+from .files import register_file_tools
+from .layers import register_layer_tools
+from .session import register_session_tools
 
 __all__ = [
     "register_session_tools",

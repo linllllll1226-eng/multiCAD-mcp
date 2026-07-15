@@ -25,9 +25,7 @@ def validate(entities, **overrides):
         "preview_mode": True,
     }
     data.update(overrides)
-    return PlanValidator().validate(
-        DrawingPlan.model_validate(data), available_layers=LAYERS
-    )
+    return PlanValidator().validate(DrawingPlan.model_validate(data), available_layers=LAYERS)
 
 
 def entity(kind, coordinates, dimensions, layer="AI_PREVIEW_OUTLINE", **extra):

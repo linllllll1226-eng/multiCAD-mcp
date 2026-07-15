@@ -177,9 +177,7 @@ class AcceptanceAdapter(AutoCADAdapter):
 
     def list_layers(self) -> list[str]:
         """Read layers after AutoCAD finishes creating the document."""
-        return _retry_com(
-            lambda: [str(layer.Name) for layer in self.document.Layers]
-        )
+        return _retry_com(lambda: [str(layer.Name) for layer in self.document.Layers])
 
 
 def _adapter(application: Any, document: Any) -> AutoCADAdapter:
@@ -256,9 +254,7 @@ def _run_guarded_task(
         errors=[],
     )
     store.update_ai_task(task_id, status="executed")
-    verification = PostExecutionVerifier().verify(
-        adapter, plan, execution["handles"]
-    )
+    verification = PostExecutionVerifier().verify(adapter, plan, execution["handles"])
     provenance_errors = []
     for handle in execution["handles"]:
         metadata = read_entity_provenance(adapter.document.HandleToObject(handle))
@@ -298,9 +294,7 @@ def _save_template(application: Any, target: Path) -> dict[str, Any]:
     _configure_template(document)
     _wait_document_ready(document)
     target.parent.mkdir(parents=True, exist_ok=True)
-    _retry_com(
-        lambda: document.SaveAs(str(target.resolve()), 66)
-    )  # ac2018_Template
+    _retry_com(lambda: document.SaveAs(str(target.resolve()), 66))  # ac2018_Template
     if not target.exists():
         raise RuntimeError(f"Template was not created: {target}")
     result = {
@@ -317,9 +311,7 @@ def _save_template(application: Any, target: Path) -> dict[str, Any]:
 
 def _verify_template_roundtrip(application: Any, target: Path) -> dict[str, Any]:
     """Create a new drawing from the saved DWT and verify persisted settings."""
-    document = _retry_com(
-        lambda: application.Documents.Add(str(target.resolve()))
-    )
+    document = _retry_com(lambda: application.Documents.Add(str(target.resolve())))
     _wait_document_ready(document)
     actual_layers = {str(layer.Name) for layer in document.Layers}
     expected_layers = set(LAYER_DEFINITIONS) | {"0"}
@@ -352,17 +344,13 @@ def _accept_tasks(
     drawing_path: Path,
     template_path: Path,
 ) -> dict[str, Any]:
-    document = _retry_com(
-        lambda: application.Documents.Add(str(template_path.resolve()))
-    )
+    document = _retry_com(lambda: application.Documents.Add(str(template_path.resolve())))
     adapter = _adapter(application, document)
     _wait_document_ready(document)
     task_a = _run_guarded_task(adapter, store, _circle_plan("task-a", [0, 0, 0], 10))
     task_b = _run_guarded_task(adapter, store, _circle_plan("task-b", [40, 0, 0], 5))
     manager = TaskTrackingManager(store)
-    foreign_document = _retry_com(
-        lambda: application.Documents.Add(str(template_path.resolve()))
-    )
+    foreign_document = _retry_com(lambda: application.Documents.Add(str(template_path.resolve())))
     foreign_adapter = _adapter(application, foreign_document)
     _wait_document_ready(foreign_document)
     cross_drawing_error = ""
@@ -375,24 +363,18 @@ def _accept_tasks(
     except PermissionError as exc:
         cross_drawing_error = str(exc)
     if "different drawing" not in cross_drawing_error:
-        raise RuntimeError(
-            "Cross-drawing task commit was not blocked by drawing identity"
-        )
+        raise RuntimeError("Cross-drawing task commit was not blocked by drawing identity")
     cross_drawing_guard = {
         "blocked": True,
         "error": cross_drawing_error,
         "foreign_modelspace_count": int(foreign_document.ModelSpace.Count),
     }
     _retry_com(lambda: foreign_document.Close(False))
-    commit_manifest = manager.commit_preview_task(
-        adapter, task_a["task_id"], confirmed=False
-    )
+    commit_manifest = manager.commit_preview_task(adapter, task_a["task_id"], confirmed=False)
     if not commit_manifest.get("requires_confirmation"):
         raise RuntimeError("Commit manifest was not required")
     commit = manager.commit_preview_task(adapter, task_a["task_id"], confirmed=True)
-    revert_manifest = manager.revert_task(
-        adapter, task_b["task_id"], confirmed=False
-    )
+    revert_manifest = manager.revert_task(adapter, task_b["task_id"], confirmed=False)
     if not revert_manifest.get("requires_confirmation"):
         raise RuntimeError("Revert manifest was not required")
     revert = manager.revert_task(adapter, task_b["task_id"], confirmed=True)
@@ -401,9 +383,7 @@ def _accept_tasks(
     drawing_path.parent.mkdir(parents=True, exist_ok=True)
     _retry_com(lambda: document.SaveAs(str(drawing_path.resolve())))
     _retry_com(lambda: document.Close(True))
-    reopened = _retry_com(
-        lambda: application.Documents.Open(str(drawing_path.resolve()))
-    )
+    reopened = _retry_com(lambda: application.Documents.Open(str(drawing_path.resolve())))
     persisted_a = reopened.HandleToObject(handle_a)
     persisted_b = reopened.HandleToObject(handle_b)
     metadata_a = read_entity_provenance(persisted_a)
@@ -427,9 +407,7 @@ def _accept_tasks(
         "revert_layer_visible": False,
     }
     if persistence != expected:
-        raise RuntimeError(
-            f"Save/reopen persistence mismatch: {persistence} != {expected}"
-        )
+        raise RuntimeError(f"Save/reopen persistence mismatch: {persistence} != {expected}")
     _retry_com(lambda: reopened.Close(False))
     return {
         "drawing": str(drawing_path.resolve()),
@@ -450,9 +428,7 @@ def main() -> int:
     targets = [args.acceptance_dwg, args.database, args.report]
     if args.reuse_existing_template:
         if not args.template_target.exists():
-            raise FileNotFoundError(
-                f"Template does not exist for reuse: {args.template_target}"
-            )
+            raise FileNotFoundError(f"Template does not exist for reuse: {args.template_target}")
     else:
         targets.append(args.template_target)
     _refuse_existing(targets)
@@ -493,9 +469,7 @@ def main() -> int:
             application, store, args.acceptance_dwg, args.template_target
         )
         report["success"] = True
-        args.report.write_text(
-            json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return 0
     except Exception as exc:

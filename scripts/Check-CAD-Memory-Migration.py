@@ -31,14 +31,10 @@ def _snapshot(path: Path) -> tuple[set[str], dict[str, int]]:
     with sqlite3.connect(path) as connection:
         tables = {
             str(row[0])
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'table'"
-            )
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
         }
         counts = {
-            table: int(
-                connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-            )
+            table: int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
             for table in LEGACY_TABLES
         }
     return tables, counts
@@ -51,9 +47,7 @@ def main() -> int:
     if not path.exists():
         raise FileNotFoundError(path)
     if path.name.casefold() == "cad_memory.db":
-        raise ValueError(
-            "Refusing a live-looking cad_memory.db name; use a disposable copy name"
-        )
+        raise ValueError("Refusing a live-looking cad_memory.db name; use a disposable copy name")
     before_tables, before_counts = _snapshot(path)
     SQLiteMemoryStore(path)
     after_tables, after_counts = _snapshot(path)
@@ -64,9 +58,7 @@ def main() -> int:
         "before_tables": sorted(before_tables),
         "after_tables": sorted(after_tables),
     }
-    report["passed"] = bool(
-        report["legacy_counts_unchanged"] and report["task_tables_added"]
-    )
+    report["passed"] = bool(report["legacy_counts_unchanged"] and report["task_tables_added"])
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if report["passed"] else 1
 

@@ -1,8 +1,9 @@
-import win32com.client
-import pythoncom
 import json
 import os
-import sys
+
+import pythoncom
+import win32com.client
+
 
 def fix_zwcad_view():
     pythoncom.CoInitialize()
@@ -36,13 +37,13 @@ def fix_zwcad_view():
         if point_cloud:
             print(f"Found Point Cloud: {point_cloud.Handle}")
             min_pt, max_pt = point_cloud.GetBoundingBox()
-            
+
             bbox = {
                 "min": [min_pt[0], min_pt[1], min_pt[2]],
                 "max": [max_pt[0], max_pt[1], max_pt[2]],
-                "handle": point_cloud.Handle
+                "handle": point_cloud.Handle,
             }
-            
+
             output_path = r"C:\Users\fuego\Documents\multiCAD Exports\point_cloud_info.json"
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             with open(output_path, "w") as f:
@@ -55,6 +56,7 @@ def fix_zwcad_view():
         print(f"An error occurred: {e}")
     finally:
         pythoncom.CoUninitialize()
+
 
 if __name__ == "__main__":
     fix_zwcad_view()

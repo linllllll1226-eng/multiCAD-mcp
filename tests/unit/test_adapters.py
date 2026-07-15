@@ -1,10 +1,12 @@
-"""
-Unit tests for CAD adapters.
-Tests adapter interface implementation and context managers.
+"""Unit tests for CAD adapters.
+
+Test adapter interface implementation and context managers.
 """
 
+from unittest.mock import MagicMock, PropertyMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, Mock, PropertyMock
+
 from src.adapters import AutoCADAdapter
 from src.core import CADInterface
 
@@ -40,9 +42,10 @@ class TestContextManagers:
         """Test that AutoCADAdapter can be used as context manager."""
         adapter = AutoCADAdapter("autocad")
 
-        with patch.object(adapter, "connect", return_value=True) as mock_connect, \
-             patch.object(adapter, "disconnect") as mock_disconnect:
-
+        with (
+            patch.object(adapter, "connect", return_value=True) as mock_connect,
+            patch.object(adapter, "disconnect") as mock_disconnect,
+        ):
             # Use adapter as context manager
             with adapter as ctx_adapter:
                 assert ctx_adapter is adapter
@@ -58,14 +61,16 @@ class TestContextManagers:
         with patch.object(adapter, "connect", return_value=False):
             # Should raise CADConnectionError if connection fails
             from core.exceptions import CADConnectionError
+
             with pytest.raises(CADConnectionError):
-                with adapter as ctx_adapter:
+                with adapter:
                     pass
 
     def test_com_session_context_manager(self):
         """Test that com_session properly initializes/uninitializes COM."""
-        from src.adapters.autocad_adapter import com_session
         import sys
+
+        from src.adapters.autocad_adapter import com_session
 
         if sys.platform != "win32":
             pytest.skip("COM only available on Windows")
@@ -73,9 +78,10 @@ class TestContextManagers:
         # Import pythoncom for mocking
         import pythoncom
 
-        with patch.object(pythoncom, "CoInitialize") as mock_init, \
-             patch.object(pythoncom, "CoUninitialize") as mock_uninit:
-
+        with (
+            patch.object(pythoncom, "CoInitialize") as mock_init,
+            patch.object(pythoncom, "CoUninitialize") as mock_uninit,
+        ):
             with com_session():
                 mock_init.assert_called_once()
 
@@ -130,7 +136,9 @@ class TestCADInterfaceContract:
         assert "CADInterface" in mro_names, f"CADInterface must be in MRO. Found: {mro_names}"
 
         # Also check that adapter has the ABC.ABCMeta metaclass (from CADInterface)
-        assert hasattr(AutoCADAdapter, '__abstractmethods__'), "AutoCADAdapter should have __abstractmethods__ from ABC"
+        assert hasattr(AutoCADAdapter, "__abstractmethods__"), (
+            "AutoCADAdapter should have __abstractmethods__ from ABC"
+        )
 
     def test_adapter_has_required_methods(self):
         """Test that adapter has all required interface methods."""
@@ -172,9 +180,7 @@ class TestCADInterfaceContract:
 
         adapter = AutoCADAdapter("autocad")
         for method in required_methods:
-            assert hasattr(
-                adapter, method
-            ), f"AutoCADAdapter missing {method}"
+            assert hasattr(adapter, method), f"AutoCADAdapter missing {method}"
 
 
 class TestCoordinateNormalization:
@@ -206,6 +212,7 @@ class TestCoordinateNormalization:
         with pytest.raises(ValueError):
             # Too many dimensions - type: ignore
             CADInterface.normalize_coordinate((10, 20, 30, 40))  # type: ignore
+
 
 class TestLineWeightValidation:
     """Test suite for lineweight validation."""
@@ -274,12 +281,11 @@ class TestRefreshViewUndoRedo:
 
         adapter = AutoCADAdapter("autocad")
 
-        with patch.object(adapter, "_get_application") as mock_get_app, patch.object(
-            adapter, "_get_document"
-        ) as mock_get_doc, patch.object(
-            adapter, "_simulate_autocad_click"
-        ) as mock_click:
-
+        with (
+            patch.object(adapter, "_get_application") as mock_get_app,
+            patch.object(adapter, "_get_document") as mock_get_doc,
+            patch.object(adapter, "_simulate_autocad_click") as mock_click,
+        ):
             mock_app = MagicMock()
             mock_doc = MagicMock()
             mock_get_app.return_value = mock_app
@@ -305,10 +311,11 @@ class TestRefreshViewUndoRedo:
 
         adapter = AutoCADAdapter("autocad")
 
-        with patch.object(adapter, "_validate_connection"), patch.object(
-            adapter, "_get_application"
-        ) as mock_get_app, patch.object(adapter, "refresh_view") as mock_refresh:
-
+        with (
+            patch.object(adapter, "_validate_connection"),
+            patch.object(adapter, "_get_application") as mock_get_app,
+            patch.object(adapter, "refresh_view") as mock_refresh,
+        ):
             mock_app = MagicMock()
             mock_get_app.return_value = mock_app
 
@@ -331,10 +338,11 @@ class TestRefreshViewUndoRedo:
 
         adapter = AutoCADAdapter("autocad")
 
-        with patch.object(adapter, "_validate_connection"), patch.object(
-            adapter, "_get_application"
-        ) as mock_get_app, patch.object(adapter, "refresh_view") as mock_refresh:
-
+        with (
+            patch.object(adapter, "_validate_connection"),
+            patch.object(adapter, "_get_application") as mock_get_app,
+            patch.object(adapter, "refresh_view") as mock_refresh,
+        ):
             mock_app = MagicMock()
             mock_get_app.return_value = mock_app
 
@@ -357,12 +365,11 @@ class TestDataExport:
 
         adapter = AutoCADAdapter("autocad")
 
-        with patch.object(adapter, "_validate_connection"), patch.object(
-            adapter, "_get_document"
-        ) as mock_get_doc, patch.object(
-            adapter, "_get_entities_to_process"
-        ) as mock_get_entities:
-
+        with (
+            patch.object(adapter, "_validate_connection"),
+            patch.object(adapter, "_get_document") as mock_get_doc,
+            patch.object(adapter, "_get_entities_to_process") as mock_get_entities,
+        ):
             # Mock entity with properties
             mock_entity = MagicMock()
             mock_entity.Handle = "A1B2C3D4"
@@ -396,12 +403,11 @@ class TestDataExport:
 
         adapter = AutoCADAdapter("autocad")
 
-        with patch.object(adapter, "_validate_connection"), patch.object(
-            adapter, "_get_document"
-        ) as mock_get_doc, patch.object(
-            adapter, "_get_entities_to_process"
-        ) as mock_get_entities:
-
+        with (
+            patch.object(adapter, "_validate_connection"),
+            patch.object(adapter, "_get_document") as mock_get_doc,
+            patch.object(adapter, "_get_entities_to_process") as mock_get_entities,
+        ):
             # Mock empty entity list
             mock_get_entities.return_value = []
 
@@ -419,12 +425,11 @@ class TestDataExport:
 
         adapter = AutoCADAdapter("autocad")
 
-        with patch.object(adapter, "_validate_connection"), patch.object(
-            adapter, "_get_document"
-        ) as mock_get_doc, patch.object(
-            adapter, "_get_entities_to_process"
-        ) as mock_get_entities:
-
+        with (
+            patch.object(adapter, "_validate_connection"),
+            patch.object(adapter, "_get_document") as mock_get_doc,
+            patch.object(adapter, "_get_entities_to_process") as mock_get_entities,
+        ):
             # Mock selected entity
             mock_entity = MagicMock()
             mock_entity.Handle = "SELECTED1"
@@ -516,7 +521,6 @@ class TestDataExport:
         adapter = AutoCADAdapter("autocad")
 
         with patch.object(adapter, "extract_drawing_data") as mock_extract:
-
             # Mock empty drawing data
             mock_extract.return_value = []
 
@@ -532,10 +536,10 @@ class TestDataExport:
 
         adapter = AutoCADAdapter("autocad")
 
-        with patch.object(
-            adapter, "extract_drawing_data"
-        ) as mock_extract, patch.object(adapter, "get_layers_info") as mock_get_layers_info:
-
+        with (
+            patch.object(adapter, "extract_drawing_data") as mock_extract,
+            patch.object(adapter, "get_layers_info") as mock_get_layers_info,
+        ):
             # Mock drawing data
             mock_extract.return_value = [
                 {
@@ -561,19 +565,31 @@ class TestDataExport:
             # Mock layers info
             mock_get_layers_info.return_value = [
                 {
-                    "Name": "0", "ObjectCount": 1, "Color": "white",
-                    "Linetype": "Continuous", "Lineweight": "Default",
-                    "IsLocked": False, "IsVisible": True,
+                    "Name": "0",
+                    "ObjectCount": 1,
+                    "Color": "white",
+                    "Linetype": "Continuous",
+                    "Lineweight": "Default",
+                    "IsLocked": False,
+                    "IsVisible": True,
                 },
                 {
-                    "Name": "1", "ObjectCount": 0, "Color": "red",
-                    "Linetype": "Continuous", "Lineweight": "Default",
-                    "IsLocked": False, "IsVisible": True,
+                    "Name": "1",
+                    "ObjectCount": 0,
+                    "Color": "red",
+                    "Linetype": "Continuous",
+                    "Lineweight": "Default",
+                    "IsLocked": False,
+                    "IsVisible": True,
                 },
                 {
-                    "Name": "MyLayer", "ObjectCount": 2, "Color": "blue",
-                    "Linetype": "Dashed", "Lineweight": "0.5",
-                    "IsLocked": True, "IsVisible": False,
+                    "Name": "MyLayer",
+                    "ObjectCount": 2,
+                    "Color": "blue",
+                    "Linetype": "Dashed",
+                    "Lineweight": "0.5",
+                    "IsLocked": True,
+                    "IsVisible": False,
                 },
             ]
 
@@ -604,17 +620,16 @@ class TestDataExport:
     def test_export_to_excel_creates_layers_sheet(self, tmp_path, monkeypatch):
         """Test that export_to_excel creates a Layers sheet with detailed layer information."""
         monkeypatch.setenv("MULTICAD_OUTPUT_DIR", str(tmp_path / "图层导出"))
-        from src.adapters.autocad_adapter import AutoCADAdapter
         from openpyxl import load_workbook
+
+        from src.adapters.autocad_adapter import AutoCADAdapter
 
         adapter = AutoCADAdapter("autocad")
 
-        with patch.object(
-            adapter, "extract_drawing_data"
-        ) as mock_extract, patch.object(
-            adapter, "get_layers_info"
-        ) as mock_get_layers_info:
-
+        with (
+            patch.object(adapter, "extract_drawing_data") as mock_extract,
+            patch.object(adapter, "get_layers_info") as mock_get_layers_info,
+        ):
             # Mock drawing data
             mock_extract.return_value = [
                 {
@@ -729,9 +744,9 @@ class TestDataExport:
 
     def test_color_map_reverse_in_extract_data(self):
         """Test that color mapping works in extract_drawing_data."""
-        from src.adapters.autocad_adapter import AutoCADAdapter, COLOR_MAP
+        from src.adapters.autocad_adapter import COLOR_MAP, AutoCADAdapter
 
-        adapter = AutoCADAdapter("autocad")
+        AutoCADAdapter("autocad")
 
         # Verify COLOR_MAP exists and has expected values
         assert isinstance(COLOR_MAP, dict)
@@ -774,10 +789,10 @@ class TestLayersInfo:
             {"Layer": "Walls", "Handle": "C3"},
         ]
 
-        with patch.object(adapter, "_validate_connection"), patch.object(
-            adapter, "_get_document"
-        ) as mock_get_doc:
-
+        with (
+            patch.object(adapter, "_validate_connection"),
+            patch.object(adapter, "_get_document") as mock_get_doc,
+        ):
             # Mock document with layers
             mock_layer_0 = MagicMock()
             mock_layer_0.Name = "0"
@@ -814,15 +829,15 @@ class TestLayersInfo:
             assert len(result) == 3
 
             # Check entity counts match pre-extracted data
-            layer_0_info = next((l for l in result if l["Name"] == "0"), None)
+            layer_0_info = next((layer for layer in result if layer["Name"] == "0"), None)
             assert layer_0_info is not None
             assert layer_0_info["ObjectCount"] == 2
 
-            layer_1_info = next((l for l in result if l["Name"] == "1"), None)
+            layer_1_info = next((layer for layer in result if layer["Name"] == "1"), None)
             assert layer_1_info is not None
             assert layer_1_info["ObjectCount"] == 1
 
-            layer_walls_info = next((l for l in result if l["Name"] == "Walls"), None)
+            layer_walls_info = next((layer for layer in result if layer["Name"] == "Walls"), None)
             assert layer_walls_info is not None
             assert layer_walls_info["ObjectCount"] == 3
 
@@ -835,10 +850,10 @@ class TestLayersInfo:
 
         adapter = AutoCADAdapter("autocad")
 
-        with patch.object(adapter, "_validate_connection"), patch.object(
-            adapter, "_get_document"
-        ) as mock_get_doc:
-
+        with (
+            patch.object(adapter, "_validate_connection"),
+            patch.object(adapter, "_get_document") as mock_get_doc,
+        ):
             # Mock document with layers
             mock_layer_0 = MagicMock()
             mock_layer_0.Name = "0"
@@ -858,31 +873,33 @@ class TestLayersInfo:
 
             mock_doc = MagicMock()
             mock_doc.Layers = [mock_layer_0, mock_layer_1]
-            
+
             # Mock SelectionSets
             mock_ss = MagicMock()
             # Set up count iteration: layer "0" has 1 object, layer "1" has 0 objects
             mock_ss.Count = 1
-            
-            # Add dynamic effect so that subsequent calls to ss.Count return different counts if necessary
+
+            # Let subsequent ss.Count calls return different values when needed.
             # Or just rely on ss.Count being 1 for all queries in this mock
             type(mock_ss).Count = PropertyMock(side_effect=[1, 0])
 
             mock_ss_coll = MagicMock()
             mock_ss_coll.Add.return_value = mock_ss
             mock_doc.SelectionSets = mock_ss_coll
-            
+
             mock_get_doc.return_value = mock_doc
 
             # Mock win32com and pythoncom so windows imports do not fail or complain during tests
-            import sys
+
             mock_win32com = MagicMock()
             mock_pythoncom = MagicMock()
             mock_pythoncom.VT_ARRAY = 8192
             mock_pythoncom.VT_I2 = 2
             mock_pythoncom.VT_VARIANT = 12
 
-            with patch.dict('sys.modules', {'win32com.client': mock_win32com, 'pythoncom': mock_pythoncom}):
+            with patch.dict(
+                "sys.modules", {"win32com.client": mock_win32com, "pythoncom": mock_pythoncom}
+            ):
                 # Call get_layers_info without entity_data
                 result = adapter.get_layers_info()
 
@@ -890,11 +907,11 @@ class TestLayersInfo:
             assert len(result) == 2
 
             # Check entity counts from SelectionSets iteration
-            layer_0_info = next((l for l in result if l["Name"] == "0"), None)
+            layer_0_info = next((layer for layer in result if layer["Name"] == "0"), None)
             assert layer_0_info is not None
             assert layer_0_info["ObjectCount"] == 1
 
-            layer_1_info = next((l for l in result if l["Name"] == "1"), None)
+            layer_1_info = next((layer for layer in result if layer["Name"] == "1"), None)
             assert layer_1_info is not None
             assert layer_1_info["ObjectCount"] == 0
 
@@ -926,14 +943,15 @@ class TestBlockCreation:
         # Mock CopyObjects
         mock_doc.CopyObjects = MagicMock()
 
-        with patch.object(adapter, "_validate_connection"), \
-             patch.object(adapter, "_get_application", return_value=mock_app):
-
+        with (
+            patch.object(adapter, "_validate_connection"),
+            patch.object(adapter, "_get_application", return_value=mock_app),
+        ):
             result = adapter.create_block_from_entities(
                 block_name="TestBlock",
                 entity_handles=["A1B2", "C3D4"],
                 insertion_point=(0.0, 0.0, 0.0),
-                description="Test block"
+                description="Test block",
             )
 
             # Verify result
@@ -965,14 +983,15 @@ class TestBlockCreation:
 
         from core.exceptions import CADOperationError
 
-        with patch.object(adapter, "_validate_connection"), \
-             patch.object(adapter, "_get_application", return_value=mock_app):
-
+        with (
+            patch.object(adapter, "_validate_connection"),
+            patch.object(adapter, "_get_application", return_value=mock_app),
+        ):
             with pytest.raises(CADOperationError) as exc_info:
                 adapter.create_block_from_entities(
                     block_name="ExistingBlock",
                     entity_handles=["A1B2"],
-                    insertion_point=(0.0, 0.0, 0.0)
+                    insertion_point=(0.0, 0.0, 0.0),
                 )
 
             assert "already exists" in str(exc_info.value).lower()
@@ -995,20 +1014,18 @@ class TestBlockCreation:
 
         # Mock HandleToObject - one entity exists, one doesn't
         mock_entity = MagicMock()
-        mock_doc.HandleToObject.side_effect = [
-            mock_entity,
-            Exception("Invalid handle")
-        ]
+        mock_doc.HandleToObject.side_effect = [mock_entity, Exception("Invalid handle")]
 
         mock_doc.CopyObjects = MagicMock()
 
-        with patch.object(adapter, "_validate_connection"), \
-             patch.object(adapter, "_get_application", return_value=mock_app):
-
+        with (
+            patch.object(adapter, "_validate_connection"),
+            patch.object(adapter, "_get_application", return_value=mock_app),
+        ):
             result = adapter.create_block_from_entities(
                 block_name="PartialBlock",
                 entity_handles=["VALID", "INVALID"],
-                insertion_point=(0.0, 0.0, 0.0)
+                insertion_point=(0.0, 0.0, 0.0),
             )
 
             # Should succeed with 1 entity, report 1 failed
@@ -1044,13 +1061,14 @@ class TestBlockCreation:
 
         mock_doc.CopyObjects = MagicMock()
 
-        with patch.object(adapter, "_validate_connection"), \
-             patch.object(adapter, "_get_application", return_value=mock_app):
-
+        with (
+            patch.object(adapter, "_validate_connection"),
+            patch.object(adapter, "_get_application", return_value=mock_app),
+        ):
             result = adapter.create_block_from_selection(
                 block_name="SelectionBlock",
                 insertion_point=(10.0, 20.0, 0.0),
-                description="From selection"
+                description="From selection",
             )
 
             # Verify result
@@ -1082,13 +1100,13 @@ class TestBlockCreation:
 
         from core.exceptions import CADOperationError
 
-        with patch.object(adapter, "_validate_connection"), \
-             patch.object(adapter, "_get_application", return_value=mock_app):
-
+        with (
+            patch.object(adapter, "_validate_connection"),
+            patch.object(adapter, "_get_application", return_value=mock_app),
+        ):
             with pytest.raises(CADOperationError) as exc_info:
                 adapter.create_block_from_selection(
-                    block_name="EmptyBlock",
-                    insertion_point=(0.0, 0.0, 0.0)
+                    block_name="EmptyBlock", insertion_point=(0.0, 0.0, 0.0)
                 )
 
             assert "No entities selected" in str(exc_info.value)
@@ -1104,21 +1122,17 @@ class TestBlockCreation:
         mock_doc = MagicMock()
         mock_app.ActiveDocument = mock_doc
 
-        with patch.object(adapter, "_validate_connection"), \
-             patch.object(adapter, "_get_application", return_value=mock_app):
+        with (
+            patch.object(adapter, "_validate_connection"),
+            patch.object(adapter, "_get_application", return_value=mock_app),
+        ):
             # Empty string
             with pytest.raises(InvalidParameterError):
-                adapter.create_block_from_entities(
-                    block_name="",
-                    entity_handles=["A1B2"]
-                )
+                adapter.create_block_from_entities(block_name="", entity_handles=["A1B2"])
 
             # None
             with pytest.raises(InvalidParameterError):
-                adapter.create_block_from_entities(
-                    block_name=None,
-                    entity_handles=["A1B2"]
-                )
+                adapter.create_block_from_entities(block_name=None, entity_handles=["A1B2"])
 
     def test_objects_to_variant_array_helper(self):
         """Test _objects_to_variant_array helper method."""

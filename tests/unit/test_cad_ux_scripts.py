@@ -16,9 +16,7 @@ def test_start_script_checks_stable_entry_and_never_opens_or_saves_dwg():
 
 
 def test_template_initializer_is_dry_run_by_default_and_guards_template_save():
-    text = (ROOT / "scripts" / "Initialize-AI-DrawingTemplate.ps1").read_text(
-        encoding="utf-8"
-    )
+    text = (ROOT / "scripts" / "Initialize-AI-DrawingTemplate.ps1").read_text(encoding="utf-8")
     assert "ApplyToBlankDrawing" in text
     assert "ModelSpace.Count" in text
     assert "AI_UNCERTAIN" in text
@@ -38,10 +36,8 @@ def test_profile_sync_reuses_existing_mcp_tools():
 
 
 def test_task_acceptance_is_isolated_guarded_and_non_overwriting():
-    text = (
-        ROOT / "scripts" / "Run-CAD-Task-Tracking-Acceptance.py"
-    ).read_text(encoding="utf-8")
-    assert "DispatchEx(\"AutoCAD.Application.24.1\")" in text
+    text = (ROOT / "scripts" / "Run-CAD-Task-Tracking-Acceptance.py").read_text(encoding="utf-8")
+    assert 'DispatchEx("AutoCAD.Application.24.1")' in text
     assert "PlanValidator().validate" in text
     assert "PlanExecutor().execute" in text
     assert "PostExecutionVerifier().verify" in text

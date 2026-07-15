@@ -107,9 +107,7 @@ def analyze_image_geometry(
     circles: list[list[float]] = []
     if raw_circles is not None:
         for x, y, radius in raw_circles[0, :sample_limit]:
-            circles.append(
-                [round(float(x), 2), round(float(y), 2), round(float(radius), 2)]
-            )
+            circles.append([round(float(x), 2), round(float(y), 2), round(float(radius), 2)])
 
     result: dict[str, Any] = {
         "mode": "raster_geometry",
@@ -117,9 +115,7 @@ def analyze_image_geometry(
         "estimated_skew_degrees": skew,
         "residual_skew_degrees": residual,
         "line_candidate_count": 0 if raw_lines is None else int(len(raw_lines)),
-        "circle_candidate_count": (
-            0 if raw_circles is None else int(len(raw_circles[0]))
-        ),
+        "circle_candidate_count": (0 if raw_circles is None else int(len(raw_circles[0]))),
     }
     if include_samples:
         result["line_samples"] = lines

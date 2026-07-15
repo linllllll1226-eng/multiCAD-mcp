@@ -6,8 +6,8 @@ Handles data extraction and Excel export operations.
 
 import logging
 import math
-from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from contextlib import contextmanager
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from mcp_tools.constants import COLOR_MAP
 
@@ -25,24 +25,16 @@ class ExportMixin:
 
         def get_selected_entity_handles(self) -> List[str]: ...
 
-        def _fast_get_property(
-            self, obj: Any, property_name: str, default: Any = None
-        ) -> Any: ...
+        def _fast_get_property(self, obj: Any, property_name: str, default: Any = None) -> Any: ...
 
         def get_layers_info(self, entity_data: Any = None) -> List[Dict[str, Any]]: ...
 
-        def resolve_export_path(
-            self, filename: str, folder_type: str = "drawings"
-        ) -> str: ...
+        def resolve_export_path(self, filename: str, folder_type: str = "drawings") -> str: ...
         def list_blocks(self) -> List[str]: ...
-        def get_block_counts(
-            self, block_names: List[str] | None = None
-        ) -> Dict[str, int]: ...
+        def get_block_counts(self, block_names: List[str] | None = None) -> Dict[str, int]: ...
         def get_block_info(self, block_name: str) -> Dict[str, Any]: ...
 
-    def _get_entities_to_process(
-        self, document: Any, only_selected: bool = False
-    ) -> list[Any]:
+    def _get_entities_to_process(self, document: Any, only_selected: bool = False) -> list[Any]:
         """Get entities to process (all or selected).
 
         Optimized to use PickfirstSelectionSet for selected entities instead of
@@ -232,7 +224,6 @@ class ExportMixin:
         """
         import time
 
-
         try:
             self._validate_connection()
             document = self._get_document("get_entity_counts")
@@ -268,9 +259,7 @@ class ExportMixin:
             perf_start = time.perf_counter()
             with self._selection_set_manager(document, "MCP_ENTITY_COUNTS") as ss:
                 for clean_name, dxf_name in entity_type_map.items():
-                    fd = to_variant_array(
-                        pythoncom.VT_ARRAY | pythoncom.VT_VARIANT, [dxf_name]
-                    )
+                    fd = to_variant_array(pythoncom.VT_ARRAY | pythoncom.VT_VARIANT, [dxf_name])
                     try:
                         ss.Clear()
                         ss.Select(5, None, None, ft, fd)  # 5 = acSelectionSetAll
@@ -281,7 +270,8 @@ class ExportMixin:
                         logger.debug(f"Failed to count entity type {dxf_name}: {e}")
             elapsed = time.perf_counter() - perf_start
             logger.info(
-                f"[PERF] Counted explicit entity types via SS in {elapsed:.3f}s: {sum(type_counts.values())} total"
+                f"[PERF] Counted explicit entity types via SS in {elapsed:.3f}s: "
+                f"{sum(type_counts.values())} total"
             )
 
             return type_counts
@@ -316,8 +306,9 @@ class ExportMixin:
         com_call_stats: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
         """Extract properties for a single entity, updating stats."""
-        import time
         import math
+        import time
+
         import win32com.client
 
         # ========== PHASE 1: Basic Properties (ALWAYS) ==========
@@ -361,9 +352,7 @@ class ExportMixin:
                 color_val = 256
 
             color = (
-                "ByLayer"
-                if color_val == 256
-                else color_map_reverse.get(color_val, str(color_val))
+                "ByLayer" if color_val == 256 else color_map_reverse.get(color_val, str(color_val))
             )
             calls_made += 1
         else:
@@ -445,9 +434,7 @@ class ExportMixin:
                         sp = self._fast_get_property(dyn_entity, "StartPoint")
                         ep = self._fast_get_property(dyn_entity, "EndPoint")
                         if sp is not None and ep is not None:
-                            length_val = math.sqrt(
-                                sum((a - b) ** 2 for a, b in zip(sp, ep))
-                            )
+                            length_val = math.sqrt(sum((a - b) ** 2 for a, b in zip(sp, ep)))
                             calls_made += 2
                     except Exception:
                         pass
@@ -529,17 +516,11 @@ class ExportMixin:
                     cell.value = value
 
                     if center_cols and col_idx in center_cols:
-                        cell.alignment = Alignment(
-                            horizontal="center", vertical="center"
-                        )
+                        cell.alignment = Alignment(horizontal="center", vertical="center")
                     else:
                         cell.alignment = Alignment(horizontal="left", vertical="center")
 
-                    if (
-                        float_cols
-                        and col_idx in float_cols
-                        and isinstance(value, (int, float))
-                    ):
+                    if float_cols and col_idx in float_cols and isinstance(value, (int, float)):
                         cell.number_format = "0.000"
 
         # Auto-adjust column widths
@@ -613,9 +594,7 @@ class ExportMixin:
                 ft = to_variant_array(
                     pythoncom.VT_ARRAY | pythoncom.VT_I2, [0]
                 )  # DXF Code 0 (Type)
-                fd = to_variant_array(
-                    pythoncom.VT_ARRAY | pythoncom.VT_VARIANT, [entity_type]
-                )
+                fd = to_variant_array(pythoncom.VT_ARRAY | pythoncom.VT_VARIANT, [entity_type])
 
                 # Use a specific SS name for this extraction
                 ss_name = f"MCP_EXTRACT_{entity_type}"
@@ -636,9 +615,7 @@ class ExportMixin:
                     items_iterator = extracted_items
             else:
                 # SLOW PATH: Use existing selection logic
-                entities_to_process = self._get_entities_to_process(
-                    document, only_selected
-                )
+                entities_to_process = self._get_entities_to_process(document, only_selected)
                 total_available = len(entities_to_process)
                 import itertools
 
@@ -655,7 +632,8 @@ class ExportMixin:
                 return []
 
             logger.info(
-                f"[PERF] Entity selection ({entity_type or 'ALL'}) took {perf_selection_time:.3f}s. "
+                f"[PERF] Entity selection ({entity_type or 'ALL'}) took "
+                f"{perf_selection_time:.3f}s. "
                 f"Extracting range {offset}-{offset + limit} of {total_available}"
             )
 
@@ -718,9 +696,7 @@ class ExportMixin:
                         entities_data.append(entity_data)
 
                 except Exception as e:
-                    logger.debug(
-                        f"Failed to extract entity data (entity #{entity_count}): {e}"
-                    )
+                    logger.debug(f"Failed to extract entity data (entity #{entity_count}): {e}")
                     error_count += 1
                     continue
 
@@ -732,7 +708,8 @@ class ExportMixin:
                 f"(processed {entity_count}, {error_count} errors)"
             )
             logger.info(
-                f"[PERF] Entity iteration/extraction took {perf_iteration_time:.3f}s ({entity_count / perf_iteration_time:.1f} entities/s)"
+                f"[PERF] Entity iteration/extraction took {perf_iteration_time:.3f}s "
+                f"({entity_count / perf_iteration_time:.1f} entities/s)"
             )
 
             # Detailed property timing breakdown
@@ -743,16 +720,15 @@ class ExportMixin:
                 avg_radius = (perf_property_times["radius"] / samples_count) * 1000
                 logger.info(
                     f"[PERF] Property extraction (avg per entity): "
-                    f"basic={avg_basic:.2f}ms, geometry={avg_geometry:.2f}ms, radius={avg_radius:.2f}ms"
+                    f"basic={avg_basic:.2f}ms, geometry={avg_geometry:.2f}ms, "
+                    f"radius={avg_radius:.2f}ms"
                 )
 
             # COM call optimization statistics
             total_calls = com_call_stats["total_calls"]
             skipped_calls = com_call_stats["properties_skipped"]
             potential_calls = total_calls + skipped_calls
-            savings_pct = (
-                (skipped_calls / potential_calls * 100) if potential_calls > 0 else 0
-            )
+            savings_pct = (skipped_calls / potential_calls * 100) if potential_calls > 0 else 0
 
             logger.info(
                 f"[PERF] COM calls: {total_calls:,} made, {skipped_calls:,} skipped "
@@ -794,6 +770,7 @@ class ExportMixin:
 
         try:
             from pathlib import Path
+
             from openpyxl import Workbook
             from openpyxl.styles import Font, PatternFill
 
@@ -803,11 +780,7 @@ class ExportMixin:
             if not filepath or filepath == "drawing_data.xlsx":
                 try:
                     document = self._get_document("export_to_excel")
-                    doc_stem = (
-                        Path(document.Name).stem
-                        if document and document.Name
-                        else "drawing"
-                    )
+                    doc_stem = Path(document.Name).stem if document and document.Name else "drawing"
                     filename = f"{doc_stem}_data.xlsx"
                 except Exception:
                     filename = "drawing_data.xlsx"
@@ -853,9 +826,7 @@ class ExportMixin:
             ]
 
             # Write headers with styling
-            header_fill = PatternFill(
-                start_color="4472C4", end_color="4472C4", fill_type="solid"
-            )
+            header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
             header_font = Font(bold=True, color="FFFFFF")
 
             self._populate_worksheet(
@@ -949,7 +920,8 @@ class ExportMixin:
             logger.info(f"[PERF] Saving workbook took {perf_save_time:.3f}s")
             logger.info(f"[PERF] Total export time: {perf_total_time:.3f}s")
             logger.info(
-                f"Exported {len(data)} entities, {len(layers_info)} layers, and {len(block_names)} blocks to {full_filepath}"
+                f"Exported {len(data)} entities, {len(layers_info)} layers, and "
+                f"{len(block_names)} blocks to {full_filepath}"
             )
             return True
 

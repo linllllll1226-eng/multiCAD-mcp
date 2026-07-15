@@ -1,5 +1,5 @@
 """
-multiCAD-MCP Server
+multiCAD-MCP Server.
 
 Fast, extensible MCP server for controlling multiple CAD applications.
 
@@ -7,22 +7,22 @@ Uses FastMCP framework for clean, decorator-based tool definition.
 Supports AutoCAD, ZWCAD, GstarCAD, and other COM-compatible CAD software.
 """
 
-import sys
 import logging
+import sys
 
 from fastmcp import FastMCP
 
-from __version__ import __version__, __title__
-from core import get_supported_cads, get_config
-from mcp_tools.helpers import setup_utf8_encoding, setup_logging
+from __version__ import __title__, __version__
+from core import get_config, get_supported_cads
+from mcp_tools.helpers import setup_logging, setup_utf8_encoding
 from mcp_tools.tools import (
-    register_session_tools,
+    register_block_tools,
     register_drawing_tools,
-    register_layer_tools,
-    register_file_tools,
     register_entity_tools,
     register_export_tools,
-    register_block_tools,
+    register_file_tools,
+    register_layer_tools,
+    register_session_tools,
 )
 from web.api import api_app, log_handler
 
@@ -84,6 +84,7 @@ logger.info("CAD applications will be connected on first tool use (lazy loading)
 
 if __name__ == "__main__":
     import threading
+
     import uvicorn
 
     # Configuration from config.json

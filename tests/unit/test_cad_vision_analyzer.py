@@ -64,3 +64,25 @@ def test_raster_geometry_handles_current_opencv_shape(tmp_path: Path) -> None:
     result = analyze_source(str(source), use_cache=False, include_samples=False)
     assert result["analysis"]["line_candidate_count"] > 0
     assert abs(result["analysis"]["residual_skew_degrees"]) < 1.0
+
+
+def test_raster_source_routes_to_optional_ocr(tmp_path: Path, monkeypatch: Any) -> None:
+    pytest.importorskip("cv2")
+    from PIL import Image
+
+    source = tmp_path / "scan.png"
+    Image.new("RGB", (200, 100), "white").save(source)
+    monkeypatch.setattr(
+        "cad_vision.analyzer.extract_ocr",
+        lambda *args, **kwargs: {
+            "status": "ok",
+            "provider": "paddleocr",
+            "text_count": 1,
+            "dimension_count": 1,
+            "dimensions": [{"kind": "diameter", "value": 15.0}],
+        },
+    )
+
+    result = analyze_source(str(source), use_cache=False, use_ocr=True)
+    assert result["analysis"]["ocr"]["status"] == "ok"
+    assert result["analysis"]["ocr"]["dimensions"][0]["value"] == 15.0

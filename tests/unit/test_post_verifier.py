@@ -130,9 +130,7 @@ def test_actual_circle_matches_center_and_diameter():
             ],
         }
     )
-    result = PostExecutionVerifier().verify(
-        FakeAdapter({"A1": FakeCircle()}), plan, ["A1"]
-    )
+    result = PostExecutionVerifier().verify(FakeAdapter({"A1": FakeCircle()}), plan, ["A1"])
     assert result["passed"], result
     properties = {row["property"] for row in result["rows"]}
     assert {
@@ -166,9 +164,7 @@ def test_actual_rectangle_reports_width_height_and_closed_state():
             ],
         }
     )
-    result = PostExecutionVerifier().verify(
-        FakeAdapter({"R1": FakeRectangle()}), plan, ["R1"]
-    )
+    result = PostExecutionVerifier().verify(FakeAdapter({"R1": FakeRectangle()}), plan, ["R1"])
     assert result["passed"], result
     rows = {row["property"]: row for row in result["rows"]}
     assert rows["width"]["actual"] == 1000
@@ -200,9 +196,7 @@ def test_centerline_verification_checks_effective_layer_linetype():
         FakeAdapter({"L1": FakeLine()}, "Continuous"), plan, ["L1"]
     )
     assert not failed["passed"]
-    row = next(
-        item for item in failed["rows"] if item["property"] == "effective_linetype"
-    )
+    row = next(item for item in failed["rows"] if item["property"] == "effective_linetype")
     assert row["actual"] == "Continuous"
 
     passed = PostExecutionVerifier().verify(

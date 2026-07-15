@@ -127,9 +127,7 @@ class ValidationReceipt:
             "plan_hash": self.plan_hash,
             "drawing_identity": self.drawing_identity,
             "drawing_unit_code": self.drawing_unit_code,
-            "expires_in_seconds": max(
-                0, int(self.expires_monotonic - time.monotonic())
-            ),
+            "expires_in_seconds": max(0, int(self.expires_monotonic - time.monotonic())),
             "one_time": True,
         }
 
@@ -173,9 +171,7 @@ class ValidationReceiptStore:
     ) -> ValidationReceipt:
         """Consume a receipt only when all bound state is unchanged."""
         if not validation_id:
-            raise PermissionError(
-                "cad_execute_plan requires validation_id from cad_plan_validate"
-            )
+            raise PermissionError("cad_execute_plan requires validation_id from cad_plan_validate")
         now = time.monotonic()
         with self._lock:
             receipt = self._receipts.get(validation_id)
@@ -190,24 +186,16 @@ class ValidationReceiptStore:
                 raise PermissionError(
                     "Plan changed after validation; validate the revised plan again"
                 )
-            if _identity_key(receipt.drawing_identity) != _identity_key(
-                drawing_identity
-            ):
-                raise PermissionError(
-                    "Active drawing changed after validation; validate again"
-                )
+            if _identity_key(receipt.drawing_identity) != _identity_key(drawing_identity):
+                raise PermissionError("Active drawing changed after validation; validate again")
             if receipt.drawing_unit_code != drawing_unit_code:
-                raise PermissionError(
-                    "Drawing INSUNITS changed after validation; validate again"
-                )
+                raise PermissionError("Drawing INSUNITS changed after validation; validate again")
             receipt.consumed = True
             return receipt
 
     def _purge_expired(self, now: float) -> None:
         expired = [
-            key
-            for key, receipt in self._receipts.items()
-            if receipt.expires_monotonic <= now
+            key for key, receipt in self._receipts.items() if receipt.expires_monotonic <= now
         ]
         for key in expired:
             self._receipts.pop(key, None)

@@ -1,5 +1,6 @@
 """
 Custom exceptions for multiCAD-MCP server.
+
 Provides domain-specific error handling for CAD operations.
 """
 

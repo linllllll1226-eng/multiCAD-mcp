@@ -4,19 +4,19 @@ Mixins package for AutoCAD adapter.
 Exports all mixin classes for use in the main AutoCADAdapter.
 """
 
-from typing import Protocol, Any, List, runtime_checkable
+from typing import Any, List, Protocol, runtime_checkable
 
-from .utility_mixin import UtilityMixin, com_session, SelectionSetManager, com_safe
+from .block_mixin import BlockMixin
 from .connection_mixin import ConnectionMixin
 from .drawing_mixin import DrawingMixin
-from .layer_mixin import LayerMixin
-from .file_mixin import FileMixin
-from .view_mixin import ViewMixin
-from .selection_mixin import SelectionMixin
 from .entity_mixin import EntityMixin
-from .manipulation_mixin import ManipulationMixin
-from .block_mixin import BlockMixin
 from .export_mixin import ExportMixin
+from .file_mixin import FileMixin
+from .layer_mixin import LayerMixin
+from .manipulation_mixin import ManipulationMixin
+from .selection_mixin import SelectionMixin
+from .utility_mixin import SelectionSetManager, UtilityMixin, com_safe, com_session
+from .view_mixin import ViewMixin
 
 
 @runtime_checkable
@@ -84,9 +84,7 @@ class CADAdapterProtocol(Protocol):
         """Validate and return a valid lineweight value."""
         ...
 
-    def _wait_for(
-        self, condition: Any, timeout: float = 20.0, interval: float = 0.1
-    ) -> bool:
+    def _wait_for(self, condition: Any, timeout: float = 20.0, interval: float = 0.1) -> bool:
         """Wait for a condition to be met."""
         ...
 

@@ -83,21 +83,15 @@ class PlanValidator:
         if not isinstance(plan, DrawingPlan):
             plan = DrawingPlan.model_validate(plan)
         report = ValidationReport(passed=False)
-        layers = set(
-            available_layers if available_layers is not None else plan.existing_layers
-        )
+        layers = set(available_layers if available_layers is not None else plan.existing_layers)
 
         plan_unit = normalize_unit(plan.unit)
         active_unit = normalize_unit(drawing_unit)
         if plan_unit is None:
-            report.errors.append(
-                ValidationIssue("unit_missing", "Drawing unit is not specified")
-            )
+            report.errors.append(ValidationIssue("unit_missing", "Drawing unit is not specified"))
         elif plan_unit not in SUPPORTED_PLAN_UNITS:
             report.errors.append(
-                ValidationIssue(
-                    "unit_unsupported", f"Unsupported drawing unit: {plan.unit}"
-                )
+                ValidationIssue("unit_unsupported", f"Unsupported drawing unit: {plan.unit}")
             )
         else:
             report.checks.append(f"plan_unit={plan_unit}")
@@ -146,15 +140,10 @@ class PlanValidator:
         kind = entity.entity_type.lower()
         if entity.layer not in layers:
             report.errors.append(
-                ValidationIssue(
-                    "layer_missing", f"Layer does not exist: {entity.layer}", index
-                )
+                ValidationIssue("layer_missing", f"Layer does not exist: {entity.layer}", index)
             )
 
-        if (
-            entity.dimension_source == "approximate_reference"
-            and entity.layer != "AI_UNCERTAIN"
-        ):
+        if entity.dimension_source == "approximate_reference" and entity.layer != "AI_UNCERTAIN":
             report.errors.append(
                 ValidationIssue(
                     "approximate_on_formal_layer",
@@ -187,9 +176,7 @@ class PlanValidator:
 
         if entity.operation == "delete" and not plan.allow_delete:
             report.errors.append(
-                ValidationIssue(
-                    "delete_not_confirmed", "Deletion is not explicitly allowed", index
-                )
+                ValidationIssue("delete_not_confirmed", "Deletion is not explicitly allowed", index)
             )
         if entity.operation == "modify" and not plan.allow_overwrite:
             report.errors.append(
@@ -199,26 +186,17 @@ class PlanValidator:
                     index,
                 )
             )
-        if (
-            entity.operation in {"delete", "modify", "layout_only"}
-            and not entity.target_handles
-        ):
+        if entity.operation in {"delete", "modify", "layout_only"} and not entity.target_handles:
             report.errors.append(
-                ValidationIssue(
-                    "target_missing", "The operation requires target_handles", index
-                )
+                ValidationIssue("target_missing", "The operation requires target_handles", index)
             )
 
         for name, value in entity.dimensions.items():
             if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
                 report.errors.append(
-                    ValidationIssue(
-                        "dimension_invalid", f"Dimension {name} is not finite", index
-                    )
+                    ValidationIssue("dimension_invalid", f"Dimension {name} is not finite", index)
                 )
-            elif (
-                name not in {"start_angle", "end_angle", "angle"} and float(value) <= 0
-            ):
+            elif name not in {"start_angle", "end_angle", "angle"} and float(value) <= 0:
                 report.errors.append(
                     ValidationIssue(
                         "dimension_nonpositive",
@@ -298,16 +276,12 @@ class PlanValidator:
 
         if kind == "circle" and entity.dimensions.get("radius", 0) <= 0:
             report.errors.append(
-                ValidationIssue(
-                    "circle_radius_invalid", "Circle radius must be positive", index
-                )
+                ValidationIssue("circle_radius_invalid", "Circle radius must be positive", index)
             )
         if kind == "arc":
             if entity.dimensions.get("radius", 0) <= 0:
                 report.errors.append(
-                    ValidationIssue(
-                        "arc_radius_invalid", "Arc radius must be positive", index
-                    )
+                    ValidationIssue("arc_radius_invalid", "Arc radius must be positive", index)
                 )
             start = entity.dimensions.get("start_angle")
             end = entity.dimensions.get("end_angle")
@@ -387,10 +361,7 @@ class PlanValidator:
                 passed = (
                     len(centers) >= 2
                     and all(centers)
-                    and all(
-                        _distance(centers[0], center) <= tolerance
-                        for center in centers[1:]
-                    )
+                    and all(_distance(centers[0], center) <= tolerance for center in centers[1:])
                 )
             elif constraint.kind == "symmetry":
                 axis = data.get("axis")
@@ -412,9 +383,7 @@ class PlanValidator:
                     passed = False
             elif constraint.kind == "equal_distance":
                 distances = [float(value) for value in data.get("distances", [])]
-                passed = (
-                    len(distances) >= 2 and max(distances) - min(distances) <= tolerance
-                )
+                passed = len(distances) >= 2 and max(distances) - min(distances) <= tolerance
             elif constraint.kind == "dimension_chain":
                 parts = [float(value) for value in data.get("parts", [])]
                 total = float(data["total"])
@@ -436,9 +405,7 @@ class PlanValidator:
                 )
             )
         else:
-            report.checks.append(
-                f"entity[{index}] constraint {constraint.kind}: passed"
-            )
+            report.checks.append(f"entity[{index}] constraint {constraint.kind}: passed")
 
     @staticmethod
     def _uniform_distribution(data: dict[str, Any], tolerance: float) -> bool:
@@ -451,13 +418,9 @@ class PlanValidator:
         if max(radii) - min(radii) > tolerance:
             return False
         angles = sorted(
-            (math.degrees(math.atan2(p[1] - center[1], p[0] - center[0])) % 360)
-            for p in points
+            (math.degrees(math.atan2(p[1] - center[1], p[0] - center[0])) % 360) for p in points
         )
-        gaps = [
-            (angles[(i + 1) % len(angles)] - angles[i]) % 360
-            for i in range(len(angles))
-        ]
+        gaps = [(angles[(i + 1) % len(angles)] - angles[i]) % 360 for i in range(len(angles))]
         return all(abs(gap - expected_angle) <= tolerance for gap in gaps)
 
     @staticmethod
@@ -467,10 +430,7 @@ class PlanValidator:
         if center1 and center2:
             r1, r2 = float(data["radius1"]), float(data["radius2"])
             distance = _distance(center1, center2)
-            return (
-                min(abs(distance - (r1 + r2)), abs(distance - abs(r1 - r2)))
-                <= tolerance
-            )
+            return min(abs(distance - (r1 + r2)), abs(distance - abs(r1 - r2))) <= tolerance
         line_start = _point(data.get("line_start"))
         line_end = _point(data.get("line_end"))
         center = _point(data.get("center"))

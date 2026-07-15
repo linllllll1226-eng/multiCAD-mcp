@@ -9,20 +9,16 @@ Tests auto-correction features:
 - Default value application
 """
 
-import pytest
-
 from mcp_tools.validator import (
-    fuzzy_match_color,
-    coerce_number,
-    coerce_bool,
-    normalize_coordinate,
+    VALID_COLORS,
     autocorrect_spec,
+    coerce_bool,
+    coerce_number,
+    fuzzy_match_color,
+    normalize_coordinate,
     validate_color,
     validate_required_fields,
-    VALID_COLORS,
-    COLOR_ALIASES,
 )
-
 
 # ========== Fuzzy Color Matching Tests ==========
 
@@ -264,7 +260,7 @@ class TestValidateColor:
 
     def test_invalid_color(self):
         """Test invalid colors return error message."""
-        result = validate_color("xyz")
+        validate_color("xyz")
         # Should either return None (passed through) or error message
         # In current implementation, unmatched colors pass through
         # This test documents that behavior

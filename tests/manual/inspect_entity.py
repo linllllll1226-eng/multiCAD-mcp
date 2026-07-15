@@ -1,6 +1,6 @@
-import sys
-import os
 import logging
+import os
+import sys
 
 project_root = r"d:\dev\proys\mcp\cad\multiCAD-mcp"
 sys.path.append(os.path.join(project_root, "src"))
@@ -15,7 +15,6 @@ def inspect_entity(handle):
     try:
         adapter = get_adapter("zwcad")
         doc = adapter.document
-        model_space = doc.ModelSpace
 
         try:
             entity = doc.HandleToObject(handle)
@@ -32,20 +31,18 @@ def inspect_entity(handle):
             print("Detected Type: LEADER (AcDbLeader)")
             try:
                 print(f"Type: {entity.Type} (0=NoArrow, 1=Arrow)")
-            except:
+            except Exception:
                 pass
 
             try:
                 print(f"Coordinate count: {len(entity.Coordinates)}")
                 print(f"Coordinates: {entity.Coordinates}")
-            except:
+            except Exception:
                 pass
 
             try:
                 annotation = entity.Annotation
-                print(
-                    f"Annotation: {annotation.ObjectName} (Handle: {annotation.Handle})"
-                )
+                print(f"Annotation: {annotation.ObjectName} (Handle: {annotation.Handle})")
             except Exception as e:
                 print(f"Annotation access failed: {e}")
 
@@ -65,7 +62,7 @@ def inspect_entity(handle):
                 # Try to get MText object if possible, though MLeader usually wraps it
                 # Some interfaces expose 'MText' property
                 print(f"MText Attribute: {entity.MText.TextString}")
-            except:
+            except Exception:
                 pass
 
         # List all dynamic properties
@@ -82,7 +79,7 @@ def inspect_entity(handle):
                         if len(s_val) > 100:
                             s_val = s_val[:100] + "..."
                         print(f"{p}: {s_val}")
-                except:
+                except Exception:
                     print(f"{p}: <access failed>")
         except Exception as e:
             print(f"Failed to list properties: {e}")

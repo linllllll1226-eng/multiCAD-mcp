@@ -1,6 +1,6 @@
-# multiCAD-mcp v0.3
+# multiCAD-mcp v0.4
 
-`multiCAD-mcp` connects MCP-compatible AI clients to Windows CAD applications through COM. This branch adds a guarded AutoCAD 2022 workflow for image reconstruction, verified drawing, persistent corrections, task tracking, and task-scoped commit/revert operations.
+`multiCAD-mcp` connects MCP-compatible AI clients to Windows CAD applications through COM. This release adds a guarded AutoCAD 2022 workflow for image reconstruction, verified drawing, persistent corrections, task tracking, task-scoped commit/revert operations, and optional local OCR for scanned drawings.
 
 > This repository extends the Apache-2.0 project by [AnCode666/multiCAD-mcp](https://github.com/AnCode666/multiCAD-mcp). The original seven unified tools and multi-CAD adapters remain available.
 
@@ -8,7 +8,8 @@
 
 - **Primary verified target:** AutoCAD 2022 on Windows (`COM 24.1`).
 - **MCP surface:** 23 tools: 7 upstream unified CAD tools plus 16 guarded workflow, memory, task, and vision tools.
-- **Tests:** 245 automated tests at the v0.3 integration point.
+- **Tests:** 251 automated tests at the v0.4 integration point.
+- **Quality gate:** full Ruff lint/format checks and release-hygiene validation.
 - **Transport:** local STDIO; no network listener is required for Codex.
 - **Safe entry point:** `src/server_memory.py`.
 - **Legacy entry point:** `src/server.py` (retained for upstream compatibility, without the complete guarded workflow).
@@ -39,7 +40,7 @@ Legacy write tools remain available for compatibility, but the included `autocad
 | Dimension safety | Native diameter/radius dimensions, empty `TextOverride`, background fill checks |
 | Task tracking | Stable `task_id`, persistent entity provenance, and AI-created-object lookup |
 | Safe lifecycle | Verification-gated preview commit and task-scoped revert without global `UNDO` |
-| Vision assistance | Optional PDF/raster preprocessing, line/circle/text evidence extraction, cache, and benchmarks |
+| Vision assistance | Vector PDF/raster preprocessing, local OCR, dimension evidence, cache, and benchmarks |
 | Usability | Drawing profiles, write-before-backup helper, guarded template initializer, and one-click launcher |
 
 ## Requirements
@@ -54,11 +55,11 @@ Legacy write tools remain available for compatibility, but the included `autocad
 
 ```powershell
 cd D:\AI\multiCAD-mcp
-git switch release/cad-ai-v0.3
-uv sync --extra dev --extra vision --extra docs
+git switch release/cad-ai-v0.4
+uv sync --extra dev --extra vision --extra docs --extra ocr
 ```
 
-When this branch is published to a fork, replace the local checkout step with that fork's clone URL. Cloning the upstream repository alone does not currently provide these v0.3 extensions. For a minimal upstream-only installation, `uv sync` is sufficient. The `vision` extra installs OpenCV, NumPy, and PyMuPDF; it does not add a cloud OCR service.
+When this branch is published to a fork, replace the local checkout step with that fork's clone URL. Cloning the upstream repository alone does not currently provide these v0.4 extensions. For a minimal upstream-only installation, `uv sync` is sufficient. The `vision` extra installs OpenCV, NumPy, and PyMuPDF; the `ocr` extra adds PaddleOCR and local Paddle inference. No cloud OCR service is required.
 
 ## Configure Codex
 
@@ -98,6 +99,10 @@ Start preview. Use the guarded three-stage workflow and verify every principal
 dimension from real CAD entity data.
 ```
 
+For scanned drawings, `cad_analyze_source` uses OCR by default. Vector PDFs keep
+their more accurate embedded paths/text route. The first raster OCR request may
+download official models; later identical analyses use the local result cache.
+
 Convenience intents supported by the Skill include `分析这张图`, `开始预览`, `正式提交`, `检查图纸`, and `撤回本次`.
 
 ## Safety model
@@ -135,8 +140,10 @@ cad_analyze_source, cad_vision_capabilities
 
 ```powershell
 uv run pytest -q -p no:cacheprovider
-uv run ruff check src tests scripts --select E9,F63,F7,F82
+uv run ruff check src tests scripts
+uv run ruff format --check src tests scripts
 uv run mkdocs build --strict
+uv run python scripts/check_repository_hygiene.py
 ```
 
 The Windows CI workflow runs the test suite on Python 3.10, 3.11, and 3.12.
@@ -144,7 +151,7 @@ The Windows CI workflow runs the test suite on Python 3.10, 3.11, and 3.12.
 ## Known limits
 
 - Missing dimensions in a picture cannot become reliable manufacturing dimensions. Uncertain geometry must remain separate.
-- Vision preprocessing improves evidence extraction but does not replace engineering interpretation; raster OCR is intentionally not bundled.
+- OCR improves text evidence from scans but does not make ambiguous or missing dimensions authoritative.
 - Current benchmarks are deterministic engineering fixtures, not a claim of universal recognition accuracy.
 - Some arbitrary CAD edit/delete operations are deliberately unsupported by the guarded executor.
 - Dimension layout still benefits from a visual audit after entity-level verification.
@@ -157,6 +164,7 @@ The Windows CI workflow runs the test suite on Python 3.10, 3.11, and 3.12.
 - [Task tracking and safe lifecycle](docs/CAD_TASK_TRACKING.md)
 - [Safety hardening](docs/CAD_SAFETY_HARDENING.md)
 - [Vision pipeline](docs/CAD_VISION_PIPELINE.md)
+- [Scanned drawing OCR](docs/CAD_OCR.md)
 - [Vision benchmark](docs/CAD_VISION_BENCHMARK.md)
 - [Usability layer](docs/CAD_UX_IMPROVEMENTS.md)
 - [Changelog](docs/03-CHANGELOG.md)

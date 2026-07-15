@@ -23,12 +23,14 @@ The enhanced MCP has two read-only source-analysis tools:
 
 ```powershell
 cd D:\AI\multiCAD-mcp
-uv sync --extra vision
+uv sync --extra vision --extra ocr
 ```
 
-PaddleOCR remains a separate optional provider. It is deliberately not installed
-into the stable MCP environment by default because it is substantially heavier
-than vector extraction and deterministic geometry preprocessing.
+The `vision` extra provides vector PDF and raster geometry analysis. The `ocr`
+extra installs PaddleOCR plus its local Paddle inference engine. OCR is only
+invoked for raster images and image-only PDFs; embedded vector PDF text remains
+the preferred source. The first OCR request downloads official model weights to
+`data/paddle_models`, or to `PADDLE_PDX_CACHE_HOME` when that variable is set.
 
 ## Safety boundaries
 
@@ -39,6 +41,7 @@ than vector extraction and deterministic geometry preprocessing.
 - Optional input roots can be restricted with a semicolon-separated
   `MULTICAD_VISION_INPUT_ROOTS` value.
 - Cache data stays local under `data/vision_cache` and is ignored by Git.
+- OCR model files stay local under `data/paddle_models` and are ignored by Git.
 - Any later CAD write still requires
   `cad_plan_validate -> cad_execute_plan -> cad_verify_execution`.
 
@@ -56,3 +59,11 @@ Run the deterministic benchmark with:
 The benchmark measures vector path recovery, structured dimension parsing,
 deskew residual error, and repeat-analysis cache speed. It uses synthetic fixtures
 and explicitly does not claim universal real-drawing accuracy.
+
+Run the scanned-drawing OCR benchmark with:
+
+```powershell
+uv run python scripts/benchmark_cad_ocr.py
+```
+
+See [CAD_OCR.md](CAD_OCR.md) for measured results and provider troubleshooting.

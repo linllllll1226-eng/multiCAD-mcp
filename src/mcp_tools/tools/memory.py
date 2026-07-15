@@ -76,9 +76,7 @@ def register_memory_tools(mcp: Any) -> None:
         include_unconfirmed: bool = False,
     ) -> str:
         """List records from corrections, drawing_profiles, or execution_results."""
-        records = _store().list_records(
-            table, limit=limit, include_unconfirmed=include_unconfirmed
-        )
+        records = _store().list_records(table, limit=limit, include_unconfirmed=include_unconfirmed)
         return _result({"table": table, "count": len(records), "records": records})
 
     @mcp.tool()
@@ -100,9 +98,7 @@ def register_memory_tools(mcp: Any) -> None:
             name=name,
             unit=unit,
             layer_rules=_load_json(layer_rules_json, dict, "layer_rules_json"),
-            dimension_rules=_load_json(
-                dimension_rules_json, dict, "dimension_rules_json"
-            ),
+            dimension_rules=_load_json(dimension_rules_json, dict, "dimension_rules_json"),
             notes=notes,
         )
         return _result(record)

@@ -27,5 +27,5 @@ is unchanged.
 ## Limitations
 
 - Synthetic benchmark results do not equal accuracy on every real drawing.
-- PaddleOCR is intentionally not installed or benchmarked in the stable MCP.
+- OCR performance is reported separately in [CAD_OCR.md](CAD_OCR.md).
 - Raster geometry candidates still require model/user interpretation before CAD planning.

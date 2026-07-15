@@ -11,9 +11,10 @@ from pathlib import Path
 from typing import Any
 
 from .image import analyze_image_geometry
+from .ocr import extract_ocr, ocr_capabilities
 from .pdf import extract_vector_pdf
 
-PIPELINE_VERSION = "1.0.0"
+PIPELINE_VERSION = "1.1.0"
 SUPPORTED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 DEFAULT_CACHE_DIR = Path(__file__).resolve().parents[2] / "data" / "vision_cache"
 
@@ -24,21 +25,20 @@ def vision_capabilities() -> dict[str, Any]:
         "pymupdf": importlib.util.find_spec("fitz") is not None,
         "opencv": importlib.util.find_spec("cv2") is not None,
         "numpy": importlib.util.find_spec("numpy") is not None,
-        "paddleocr": importlib.util.find_spec("paddleocr") is not None,
     }
+    ocr = ocr_capabilities()
     return {
         "pipeline_version": PIPELINE_VERSION,
         "packages": packages,
         "vector_pdf_available": packages["pymupdf"],
         "raster_geometry_available": packages["opencv"] and packages["numpy"],
-        "ocr_provider_available": False,
+        "ocr_provider_available": ocr["available"],
+        "ocr": ocr,
         "supported_extensions": sorted(SUPPORTED_SUFFIXES),
         "notes": [
             "Vector PDF extraction is preferred over raster OCR when available.",
-            (
-                "PaddleOCR package presence is reported, but raster OCR is not "
-                "enabled in this pipeline version."
-            ),
+            "PaddleOCR is used locally only when requested and installed.",
+            "The first OCR run may download official model weights.",
             "Analysis never writes to AutoCAD or bypasses the guarded CAD workflow.",
         ],
     }
@@ -60,11 +60,7 @@ def _validated_source(source_path: str) -> Path:
 
     configured_roots = os.environ.get("MULTICAD_VISION_INPUT_ROOTS", "").strip()
     if configured_roots:
-        roots = [
-            Path(item).expanduser().resolve()
-            for item in configured_roots.split(";")
-            if item
-        ]
+        roots = [Path(item).expanduser().resolve() for item in configured_roots.split(";") if item]
         if not any(source == root or root in source.parents for root in roots):
             raise ValueError("source_path is outside MULTICAD_VISION_INPUT_ROOTS")
     return source
@@ -83,6 +79,9 @@ def analyze_source(
     max_pages: int = 10,
     use_cache: bool = True,
     include_samples: bool = True,
+    use_ocr: bool = False,
+    ocr_language: str = "ch",
+    ocr_min_confidence: float = 0.5,
 ) -> dict[str, Any]:
     """Analyze a local CAD source and return a compact structured result."""
     started = time.perf_counter()
@@ -93,6 +92,9 @@ def analyze_source(
         "pipeline_version": PIPELINE_VERSION,
         "max_pages": max_pages,
         "include_samples": bool(include_samples),
+        "use_ocr": bool(use_ocr),
+        "ocr_language": ocr_language,
+        "ocr_min_confidence": float(ocr_min_confidence),
     }
     cache_key = hashlib.sha256(
         json.dumps({"sha256": digest, **options}, sort_keys=True).encode("utf-8")
@@ -115,6 +117,27 @@ def analyze_source(
     else:
         analysis = analyze_image_geometry(source, include_samples=include_samples)
 
+    should_run_ocr = use_ocr and (
+        source.suffix.lower() != ".pdf" or analysis.get("text_word_count", 0) == 0
+    )
+    if should_run_ocr:
+        analysis["ocr"] = extract_ocr(
+            source,
+            language=ocr_language,
+            min_confidence=ocr_min_confidence,
+            max_pages=max_pages,
+            include_samples=include_samples,
+        )
+    elif use_ocr:
+        analysis["ocr"] = {
+            "status": "skipped_vector_text",
+            "provider": "vector_pdf",
+            "text_count": analysis.get("text_word_count", 0),
+            "dimension_count": len(analysis.get("dimensions", [])),
+            "dimensions": analysis.get("dimensions", []),
+            "reason": "Embedded vector text was available, so raster OCR was unnecessary.",
+        }
+
     result: dict[str, Any] = {
         "source": {
             "name": source.name,
@@ -129,7 +152,5 @@ def analyze_source(
     }
     if use_cache:
         cache_dir.mkdir(parents=True, exist_ok=True)
-        cache_path.write_text(
-            json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        cache_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return result

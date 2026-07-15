@@ -123,11 +123,7 @@ def register_validation_tools(mcp: Any) -> None:
                 task_id=task_id,
                 execution_result_id=pending["id"],
             )
-            errors = [
-                row.get("error")
-                for row in result.get("results", [])
-                if row.get("error")
-            ]
+            errors = [row.get("error") for row in result.get("results", []) if row.get("error")]
             store.update_execution_result(
                 pending["id"],
                 actual_data={
@@ -151,9 +147,7 @@ def register_validation_tools(mcp: Any) -> None:
         except Exception as exc:
             rolled_back = False
             if result and result.get("handles"):
-                rolled_back = _rollback_task_handles(
-                    adapter, task_id, result["handles"]
-                )
+                rolled_back = _rollback_task_handles(adapter, task_id, result["handles"])
             store.update_execution_result(
                 pending["id"],
                 actual_data={
@@ -169,15 +163,11 @@ def register_validation_tools(mcp: Any) -> None:
         return _json_result(result)
 
     @cad_tool(mcp, "cad_verify_execution")
-    def cad_verify_execution(
-        plan_json: str, handles_json: str, task_id: str = ""
-    ) -> str:
+    def cad_verify_execution(plan_json: str, handles_json: str, task_id: str = "") -> str:
         """Re-read actual AutoCAD objects and compare them with plan targets."""
         plan = DrawingPlan.model_validate_json(plan_json)
         handles = json.loads(handles_json)
-        if not isinstance(handles, list) or not all(
-            isinstance(item, str) for item in handles
-        ):
+        if not isinstance(handles, list) or not all(isinstance(item, str) for item in handles):
             raise ValueError("handles_json must be a JSON array of entity handles")
         adapter = get_current_adapter()
         result = PostExecutionVerifier().verify(adapter, plan, handles)
@@ -196,9 +186,7 @@ def register_validation_tools(mcp: Any) -> None:
                     continue
                 metadata = read_entity_provenance(document.HandleToObject(handle))
                 if not metadata or metadata.get("task_id") != resolved_task_id:
-                    provenance_errors.append(
-                        f"entity[{index}] {handle}: task provenance mismatch"
-                    )
+                    provenance_errors.append(f"entity[{index}] {handle}: task provenance mismatch")
         else:
             provenance_errors.append("Unable to resolve one AI task for the handles")
         if provenance_errors:

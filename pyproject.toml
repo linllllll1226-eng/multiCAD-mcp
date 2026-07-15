@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "multiCAD-mcp"
-version = "0.3.0"
+version = "0.4.0"
 description = "MCP server for guarded AI control of AutoCAD and other Windows COM CAD applications"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -58,6 +58,11 @@ vision = [
     "numpy>=1.26,<3",
     "opencv-python-headless>=4.10",
     "pymupdf>=1.24",
+]
+ocr = [
+    "chardet>=5.2,<6",
+    "paddleocr>=3.3,<4",
+    "paddlepaddle==3.2.0",
 ]
 
 [project.urls]
@@ -125,7 +130,7 @@ whitelist-regex = []
 color = true
 
 [tool.ruff]
-line-length = 88
+line-length = 100
 target-version = "py310"
 
 [tool.ruff.lint]
@@ -148,6 +153,9 @@ indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
 
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
 [dependency-groups]
 docs = [
     "backrefs>=6.2",
@@ -156,3 +164,10 @@ docs = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "tests/**" = ["D100", "D101", "D102", "D103"]
+"src/adapters/mixins/*.py" = ["D102"]
+"src/core/exceptions.py" = ["D107"]
+"tests/manual/*.py" = ["E402"]
+"src/mcp_tools/tools/drawing.py" = ["E501"]
+"src/mcp_tools/tools/entities.py" = ["E501"]
+"src/mcp_tools/tools/layers.py" = ["E501"]
+"src/mcp_tools/tools/session.py" = ["E501"]

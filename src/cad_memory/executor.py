@@ -93,9 +93,7 @@ class PlanExecutor:
                         created_handles.append(handle)
                     if task_id and owned:
                         if execution_result_id is None:
-                            raise ValueError(
-                                "execution_result_id is required for task provenance"
-                            )
+                            raise ValueError("execution_result_id is required for task provenance")
                         metadata = build_entity_provenance(
                             task_id=task_id,
                             execution_result_id=execution_result_id,
@@ -108,9 +106,7 @@ class PlanExecutor:
                             drawing_name=identity["drawing_name"],
                             drawing_full_name=identity["drawing_full_name"],
                         )
-                        write_entity_provenance(
-                            adapter, document, cad_object, metadata
-                        )
+                        write_entity_provenance(adapter, document, cad_object, metadata)
                     results.append(
                         {
                             "index": index,
@@ -128,9 +124,7 @@ class PlanExecutor:
                             "operation": entity.operation,
                             "owned": owned,
                             "preview_layer": entity.layer if owned else "",
-                            "current_layer": str(
-                                getattr(cad_object, "Layer", entity.layer)
-                            ),
+                            "current_layer": str(getattr(cad_object, "Layer", entity.layer)),
                             "formal_layer": "",
                             "source_type": entity.dimension_source,
                             "confidence": entity.confidence,
@@ -141,9 +135,7 @@ class PlanExecutor:
                         }
                     )
                 except Exception as exc:
-                    results.append(
-                        {"index": index, "success": False, "error": str(exc)}
-                    )
+                    results.append({"index": index, "success": False, "error": str(exc)})
                     if handle and entity.operation == "create":
                         created_handles.append(handle)
                     rolled_back = self._rollback_created(document, created_handles)
@@ -157,9 +149,7 @@ class PlanExecutor:
             result.get("success") for result in results
         )
         handles = (
-            [result["handle"] for result in results if result.get("success")]
-            if success
-            else []
+            [result["handle"] for result in results if result.get("success")] if success else []
         )
         return {
             "success": success,
@@ -269,9 +259,7 @@ class PlanExecutor:
             return self._native_dimension(adapter, entity, radial=True)
         raise ValueError(f"Unsupported execution entity type: {kind}")
 
-    def _native_dimension(
-        self, adapter: Any, entity: EntityPlan, *, radial: bool
-    ) -> str:
+    def _native_dimension(self, adapter: Any, entity: EntityPlan, *, radial: bool) -> str:
         document = adapter._get_document("cad_execute_plan_dimension")
         c = entity.coordinates
         leader_length = float(entity.dimensions.get("leader_length", 10.0))

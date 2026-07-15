@@ -6,13 +6,13 @@ Handles entity manipulation operations (move, rotate, scale, copy, paste, arrays
 
 import logging
 import time
-from typing import List, TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 from mcp_tools.constants import (
-    SS_COPY,
-    SELECTION_SET_IMPLIED,
     CLIPBOARD_DELAY,
     CLIPBOARD_STABILITY_DELAY,
+    SELECTION_SET_IMPLIED,
+    SS_COPY,
 )
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,8 @@ class ManipulationMixin:
     if TYPE_CHECKING:
         # Tell type checker this mixin is used with CADAdapterProtocol
         from typing import Any
-        from core import Point, Coordinate
+
+        from core import Coordinate, Point
 
         def _validate_connection(self) -> None: ...
         def _get_document(self, operation: str = "operation") -> Any: ...
@@ -35,9 +36,7 @@ class ManipulationMixin:
         def refresh_view(self) -> bool: ...
         def _get_color_index(self, color_name: str) -> int: ...
 
-    def move_entities(
-        self, handles: List[str], offset_x: float, offset_y: float
-    ) -> bool:
+    def move_entities(self, handles: List[str], offset_x: float, offset_y: float) -> bool:
         """Translate entities by the given X/Y offset via COM Move().
 
         Args:
@@ -285,9 +284,7 @@ class ManipulationMixin:
                 except Exception as e:
                     logger.warning(f"Failed to change layer of entity {handle}: {e}")
 
-            logger.info(
-                f"Moved {changed_count}/{len(handles)} entities to layer '{layer_name}'"
-            )
+            logger.info(f"Moved {changed_count}/{len(handles)} entities to layer '{layer_name}'")
             self.refresh_view()
             return changed_count > 0
         except Exception as e:
@@ -353,13 +350,10 @@ class ManipulationMixin:
                             )
 
                 except Exception as e:
-                    logger.warning(
-                        f"Failed to create array copies for entity {handle}: {e}"
-                    )
+                    logger.warning(f"Failed to create array copies for entity {handle}: {e}")
 
             logger.info(
-                f"Created rectangular array: {len(new_handles)} copies "
-                f"({rows}x{columns} grid)"
+                f"Created rectangular array: {len(new_handles)} copies ({rows}x{columns} grid)"
             )
             self.refresh_view()
             return new_handles
@@ -425,18 +419,13 @@ class ManipulationMixin:
                         # Get handle of copied entity
                         new_handles.append(copied_entity.Handle)
 
-                        logger.debug(
-                            f"Created polar array copy at {angle}° for entity {handle}"
-                        )
+                        logger.debug(f"Created polar array copy at {angle}° for entity {handle}")
 
                 except Exception as e:
-                    logger.warning(
-                        f"Failed to create polar array copies for entity {handle}: {e}"
-                    )
+                    logger.warning(f"Failed to create polar array copies for entity {handle}: {e}")
 
             logger.info(
-                f"Created polar array: {len(new_handles)} copies "
-                f"({count} items, {angle_to_fill}°)"
+                f"Created polar array: {len(new_handles)} copies ({count} items, {angle_to_fill}°)"
             )
             self.refresh_view()
             return new_handles
@@ -517,9 +506,7 @@ class ManipulationMixin:
                         p2 = path_points[segment_idx + 1]
 
                         segment_start = cumulative_distances[segment_idx]
-                        segment_length = (
-                            cumulative_distances[segment_idx + 1] - segment_start
-                        )
+                        segment_length = cumulative_distances[segment_idx + 1] - segment_start
                         t = (
                             (target_distance - segment_start) / segment_length
                             if segment_length > 0
@@ -552,9 +539,7 @@ class ManipulationMixin:
                         )
 
                 except Exception as e:
-                    logger.warning(
-                        f"Failed to create path array copies for entity {handle}: {e}"
-                    )
+                    logger.warning(f"Failed to create path array copies for entity {handle}: {e}")
 
             logger.info(f"Created path array: {len(new_handles)} copies along path")
             self.refresh_view()

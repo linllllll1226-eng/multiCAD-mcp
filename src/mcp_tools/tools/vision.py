@@ -26,6 +26,9 @@ def register_vision_tools(mcp: Any) -> None:
         max_pages: int = 10,
         use_cache: bool = True,
         include_samples: bool = True,
+        use_ocr: bool = True,
+        ocr_language: str = "ch",
+        ocr_min_confidence: float = 0.5,
     ) -> str:
         """Analyze one local PDF/image without reading or writing an AutoCAD DWG."""
         return _result(
@@ -34,5 +37,8 @@ def register_vision_tools(mcp: Any) -> None:
                 max_pages=max_pages,
                 use_cache=use_cache,
                 include_samples=include_samples,
+                use_ocr=use_ocr,
+                ocr_language=ocr_language,
+                ocr_min_confidence=ocr_min_confidence,
             )
         )

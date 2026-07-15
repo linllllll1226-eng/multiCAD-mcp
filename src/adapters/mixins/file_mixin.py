@@ -22,13 +22,9 @@ class FileMixin:
         def _get_document(self, operation: str = "operation") -> Any: ...
         def _get_application(self, operation: str = "operation") -> Any: ...
         def _validate_document(self) -> bool: ...
-        def resolve_export_path(
-            self, filename: str, folder_type: str = "drawings"
-        ) -> str: ...
+        def resolve_export_path(self, filename: str, folder_type: str = "drawings") -> str: ...
 
-    def save_drawing(
-        self, filepath: str = "", filename: str = "", format: str = "dwg"
-    ) -> bool:
+    def save_drawing(self, filepath: str = "", filename: str = "", format: str = "dwg") -> bool:
         """Save drawing to file.
 
         Args:
@@ -76,7 +72,11 @@ class FileMixin:
                 save_filename = f"{save_filename}.{format}"
 
             # ========== Resolve Final Path ==========
-            if filepath and Path(filepath).is_absolute() and getattr(config.output, "allow_arbitrary_paths", False):
+            if (
+                filepath
+                and Path(filepath).is_absolute()
+                and getattr(config.output, "allow_arbitrary_paths", False)
+            ):
                 final_path = Path(filepath)
             else:
                 # Use centralized export path resolution for standard saves

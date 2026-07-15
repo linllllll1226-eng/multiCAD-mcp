@@ -17,8 +17,7 @@ SHORTHAND FORMAT (one per line):
 
 import json
 import logging
-from typing import Optional, Dict, Any, Callable, List, Tuple
-
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from pydantic import ValidationError
 
@@ -365,7 +364,7 @@ def register_entity_tools(mcp):
                 "handles" = comma-separated entity handles (e.g. "A1B2,C3D4")
                 "by" = "color", "layer", or "type"
 
-                Example:
+        Example:
                     select|layer|walls
                     move|A1B2,C3D4|10|5
                     set_color|A1B2,C3D4|red
@@ -409,9 +408,7 @@ def register_entity_tools(mcp):
 
             action_lower = action.lower()
             try:
-                assert_legacy_action_allowed(
-                    "manage_entities", action_lower, spec
-                )
+                assert_legacy_action_allowed("manage_entities", action_lower, spec)
             except PermissionError as exc:
                 results.append(
                     {
@@ -455,9 +452,7 @@ def register_entity_tools(mcp):
                 results.append({"index": i, "action": action_lower, **result})
             except ValidationError as e:
                 error_msg = f"Validation error: {e.errors()[0]['msg']}"
-                logger.error(
-                    f"Validation error in entity op {i} ({action_lower}): {error_msg}"
-                )
+                logger.error(f"Validation error in entity op {i} ({action_lower}): {error_msg}")
                 results.append(
                     {
                         "index": i,

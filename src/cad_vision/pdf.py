@@ -10,8 +10,12 @@ from .dimensions import parse_dimension_text
 
 
 def _rect(rect: Any) -> list[float]:
-    return [round(float(rect.x0), 3), round(float(rect.y0), 3),
-            round(float(rect.x1), 3), round(float(rect.y1), 3)]
+    return [
+        round(float(rect.x0), 3),
+        round(float(rect.y0), 3),
+        round(float(rect.x1), 3),
+        round(float(rect.y1), 3),
+    ]
 
 
 def extract_vector_pdf(
@@ -76,9 +80,7 @@ def extract_vector_pdf(
             }
             if include_samples:
                 page_result["vector_samples"] = samples
-                page_result["text_samples"] = [
-                    str(block[4]).strip() for block in blocks[:20]
-                ]
+                page_result["text_samples"] = [str(block[4]).strip() for block in blocks[:20]]
             pages.append(page_result)
 
     return {

@@ -5,6 +5,32 @@ All notable changes to multiCAD-mcp will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-15
+
+### Added
+
+- Optional local PaddleOCR 3.x integration for scanned images and image-only PDFs.
+- OCR text boxes, confidence values, page metadata, and engineering dimension candidates.
+- ASCII-safe, user-overridable Paddle model cache under `data/paddle_models`.
+- Deterministic OCR benchmark and provider-failure tests.
+- Repository hygiene checker that rejects tracked runtime data and dirty release worktrees.
+
+### Changed
+
+- Refreshed the README and vision documentation to describe the current guarded workflow.
+- Upgraded CI from partial linting to full Ruff checks and formatting validation.
+- Adopted a 100-character line limit and Google-style docstring convention across the codebase.
+
+### Fixed
+
+- Eliminated 728 pre-existing Ruff violations without changing the guarded write contract.
+- Avoided Paddle inference failures caused by non-ASCII Windows profile paths.
+
+### Security
+
+- OCR remains read-only and local; it never connects to or writes AutoCAD.
+- Vector PDF text remains preferred, and uncertain OCR evidence still requires guarded planning.
+
 ## [0.3.0] - 2026-07-15
 
 ### Added

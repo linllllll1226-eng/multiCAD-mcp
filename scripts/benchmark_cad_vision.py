@@ -83,8 +83,14 @@ def _dimension_accuracy() -> dict[str, Any]:
         new_ok = new == (expected_kind, expected_value)
         old_passed += int(old_ok)
         new_passed += int(new_ok)
-        rows.append({"source": source, "expected": [expected_kind, expected_value],
-                     "legacy_pass": old_ok, "enhanced_pass": new_ok})
+        rows.append(
+            {
+                "source": source,
+                "expected": [expected_kind, expected_value],
+                "legacy_pass": old_ok,
+                "enhanced_pass": new_ok,
+            }
+        )
     count = len(ANNOTATIONS)
     return {
         "case_count": count,
@@ -169,10 +175,7 @@ def run_benchmark(work_dir: Path) -> dict[str, Any]:
         },
         "limitations": [
             "Synthetic benchmark results do not equal accuracy on every real drawing.",
-            (
-                "PaddleOCR is intentionally not installed or benchmarked in the "
-                "stable MCP."
-            ),
+            ("PaddleOCR is intentionally not installed or benchmarked in the stable MCP."),
             (
                 "Raster geometry candidates still require model/user interpretation "
                 "before CAD planning."
@@ -187,9 +190,7 @@ def _markdown(result: dict[str, Any]) -> str:
     dimension = result["dimension_parsing"]
     deskew = result["deskew"]
     cache = result["cache"]
-    vector_gain = (
-        vector["enhanced_recovery_percent"] - vector["legacy_recovery_percent"]
-    )
+    vector_gain = vector["enhanced_recovery_percent"] - vector["legacy_recovery_percent"]
     rows = [
         (
             "| Vector PDF primary path recovery | "
@@ -228,9 +229,9 @@ model intelligence.
 
 ## Safety result
 
-- AutoCAD connected: `{result['safety']['autocad_connected']}`
-- DWG written: `{result['safety']['dwg_written']}`
-- Legacy write fallback added: `{result['safety']['legacy_write_fallback_added']}`
+- AutoCAD connected: `{result["safety"]["autocad_connected"]}`
+- DWG written: `{result["safety"]["dwg_written"]}`
+- Legacy write fallback added: `{result["safety"]["legacy_write_fallback_added"]}`
 
 ## Interpretation
 

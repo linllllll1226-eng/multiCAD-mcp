@@ -21,13 +21,11 @@ def drawing_source(document: Any) -> Path:
     full_name = str(getattr(document, "FullName", "") or "").strip()
     if not drawing_path or not full_name:
         raise BackupSafetyError(
-            "The active drawing has never been saved. "
-            "Save it manually before a formal write."
+            "The active drawing has never been saved. Save it manually before a formal write."
         )
     if not bool(getattr(document, "Saved", False)):
         raise BackupSafetyError(
-            "The active drawing has unsaved changes. "
-            "Save it manually before a formal write."
+            "The active drawing has unsaved changes. Save it manually before a formal write."
         )
     source = Path(full_name).resolve()
     if source.suffix.lower() != ".dwg" or not source.is_file():
@@ -51,9 +49,7 @@ def create_backup(
     backup_dir = source_path.parent / "AI_Backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
     timestamp = (now or datetime.now()).strftime("%Y%m%d-%H%M%S-%f")
-    destination = backup_dir / (
-        f"{source_path.stem}.AI_BACKUP.{timestamp}{source_path.suffix}"
-    )
+    destination = backup_dir / (f"{source_path.stem}.AI_BACKUP.{timestamp}{source_path.suffix}")
     shutil.copy2(source_path, destination)
 
     pattern = f"{source_path.stem}.AI_BACKUP.*{source_path.suffix}"

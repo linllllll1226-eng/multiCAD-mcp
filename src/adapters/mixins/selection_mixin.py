@@ -5,14 +5,14 @@ Handles entity selection operations.
 """
 
 import logging
-from typing import List, Callable, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, List
 
 from mcp_tools.constants import (
+    SELECTION_SET_IMPLIED,
     SS_COLOR_SELECT,
     SS_LAYER_SELECT,
-    SS_TYPE_SELECT,
     SS_SELECTION_GET,
-    SELECTION_SET_IMPLIED,
+    SS_TYPE_SELECT,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,13 +76,9 @@ class SelectionMixin:
                     for entity in entities_to_select:
                         try:
                             ss.Select(SELECTION_SET_IMPLIED, None, entity)
-                            logger.debug(
-                                f"Added entity {entity.Handle} to selection set"
-                            )
+                            logger.debug(f"Added entity {entity.Handle} to selection set")
                         except Exception as e:
-                            logger.warning(
-                                f"Failed to add entity to selection set: {e}"
-                            )
+                            logger.warning(f"Failed to add entity to selection set: {e}")
                 except Exception as e:
                     logger.warning(f"Failed to create selection set: {e}")
 
@@ -131,9 +127,7 @@ class SelectionMixin:
                     entity_layer = str(entity.Layer).strip()
                 except Exception:
                     try:
-                        entity_layer = str(
-                            entity.Properties.Item("Layer").Value
-                        ).strip()
+                        entity_layer = str(entity.Properties.Item("Layer").Value).strip()
                     except Exception:
                         return False
 

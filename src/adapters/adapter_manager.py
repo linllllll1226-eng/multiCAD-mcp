@@ -10,7 +10,7 @@ Handles:
 
 import logging
 import threading
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 from core import CADConnectionError
 
@@ -98,9 +98,7 @@ class AdapterRegistry:
             if self._adapter is not None and self._adapter.is_connected():
                 return self._adapter
 
-            raise CADConnectionError(
-                "cad", "Could not connect to any supported CAD application"
-            )
+            raise CADConnectionError("cad", "Could not connect to any supported CAD application")
 
     def _auto_detect_internal(self, only_if_running: bool = False) -> None:
         """Internal auto-detection logic within the locked context."""
@@ -110,9 +108,7 @@ class AdapterRegistry:
 
         for ct in cad_priorities:
             try:
-                logger.info(
-                    f"Auto-detecting {ct} (only_if_running={only_if_running})..."
-                )
+                logger.info(f"Auto-detecting {ct} (only_if_running={only_if_running})...")
                 adapter = AutoCADAdapter(ct)
                 if adapter.connect(only_if_running=only_if_running):
                     self._adapter = adapter
@@ -135,20 +131,14 @@ class AdapterRegistry:
         return {}
 
     def auto_detect_cad(self, only_if_running: bool = False) -> None:
-        """
-        Auto-detect and connect to available CAD applications on startup (thread-safe).
-        """
+        """Auto-detect and connect to available CAD applications on startup (thread-safe)."""
         with self._instance_lock:
             self._auto_detect_internal(only_if_running=only_if_running)
             if self._adapter is None:
-                logger.warning(
-                    "No CAD application detected. Will attempt to connect on first use."
-                )
+                logger.warning("No CAD application detected. Will attempt to connect on first use.")
 
     def shutdown_all(self) -> None:
-        """
-        Disconnect and cleanup all CAD adapter instances (thread-safe).
-        """
+        """Disconnect and cleanup all CAD adapter instances (thread-safe)."""
         with self._instance_lock:
             if self._adapter is not None:
                 try:

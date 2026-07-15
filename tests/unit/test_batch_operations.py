@@ -1,6 +1,6 @@
-"""
-Unit tests for batch operations in MCP tools.
-Tests batch functionality for drawing, layers, and entity operations.
+"""Unit tests for batch operations in MCP tools.
+
+Test batch functionality for drawing, layers, and entity operations.
 """
 
 import json
@@ -12,10 +12,12 @@ class TestDrawingBatchOperations:
     def test_draw_lines_batch_structure(self):
         """Test that draw_lines accepts proper JSON array structure."""
         # This tests the expected input format
-        lines_json = json.dumps([
-            {"start": "0,0", "end": "10,10", "color": "red"},
-            {"start": "20,20", "end": "30,30", "color": "blue"}
-        ])
+        lines_json = json.dumps(
+            [
+                {"start": "0,0", "end": "10,10", "color": "red"},
+                {"start": "20,20", "end": "30,30", "color": "blue"},
+            ]
+        )
         # Input should be valid JSON
         parsed = json.loads(lines_json)
         assert isinstance(parsed, list)
@@ -23,10 +25,9 @@ class TestDrawingBatchOperations:
 
     def test_draw_circles_batch_structure(self):
         """Test that draw_circles accepts proper JSON array structure."""
-        circles_json = json.dumps([
-            {"center": "0,0", "radius": 5.0},
-            {"center": "10,10", "radius": 3.0}
-        ])
+        circles_json = json.dumps(
+            [{"center": "0,0", "radius": 5.0}, {"center": "10,10", "radius": 3.0}]
+        )
         parsed = json.loads(circles_json)
         assert isinstance(parsed, list)
         assert len(parsed) == 2
@@ -34,10 +35,12 @@ class TestDrawingBatchOperations:
 
     def test_draw_polylines_batch_structure(self):
         """Test that draw_polylines accepts proper JSON array structure."""
-        polylines_json = json.dumps([
-            {"points": "0,0|10,10|20,0", "closed": True},
-            {"points": "50,50|60,60|70,70", "closed": False}
-        ])
+        polylines_json = json.dumps(
+            [
+                {"points": "0,0|10,10|20,0", "closed": True},
+                {"points": "50,50|60,60|70,70", "closed": False},
+            ]
+        )
         parsed = json.loads(polylines_json)
         assert isinstance(parsed, list)
         assert all("points" in p for p in parsed)
@@ -48,10 +51,12 @@ class TestLayerBatchOperations:
 
     def test_rename_layers_batch_structure(self):
         """Test that rename_layers accepts proper JSON array structure."""
-        renames_json = json.dumps([
-            {"old_name": "Layer1", "new_name": "NewLayer1"},
-            {"old_name": "Layer2", "new_name": "NewLayer2"}
-        ])
+        renames_json = json.dumps(
+            [
+                {"old_name": "Layer1", "new_name": "NewLayer1"},
+                {"old_name": "Layer2", "new_name": "NewLayer2"},
+            ]
+        )
         parsed = json.loads(renames_json)
         assert isinstance(parsed, list)
         assert all("old_name" in r and "new_name" in r for r in parsed)
@@ -65,10 +70,7 @@ class TestLayerBatchOperations:
 
     def test_delete_layers_accepts_object_array(self):
         """Test that delete_layers accepts object array."""
-        layers_json = json.dumps([
-            {"name": "Layer1"},
-            {"name": "Layer2"}
-        ])
+        layers_json = json.dumps([{"name": "Layer1"}, {"name": "Layer2"}])
         parsed = json.loads(layers_json)
         assert isinstance(parsed, list)
         assert all("name" in item for item in parsed)
@@ -91,25 +93,24 @@ class TestEntityBatchOperations:
 
     def test_change_entities_colors_batch_structure(self):
         """Test that change_entities_colors accepts proper JSON structure."""
-        colors_json = json.dumps([
-            {"handles": "h1,h2,h3", "color": "red"},
-            {"handles": "h4,h5", "color": "blue"}
-        ])
+        colors_json = json.dumps(
+            [{"handles": "h1,h2,h3", "color": "red"}, {"handles": "h4,h5", "color": "blue"}]
+        )
         parsed = json.loads(colors_json)
         assert isinstance(parsed, list)
         assert all("handles" in c and "color" in c for c in parsed)
 
     def test_change_entities_layers_batch_structure(self):
         """Test that change_entities_layers accepts proper JSON structure."""
-        layers_json = json.dumps([
-            {"handles": "h1,h2,h3", "layer_name": "Layer1"},
-            {"handles": "h4,h5", "layer_name": "Layer2"}
-        ])
+        layers_json = json.dumps(
+            [
+                {"handles": "h1,h2,h3", "layer_name": "Layer1"},
+                {"handles": "h4,h5", "layer_name": "Layer2"},
+            ]
+        )
         parsed = json.loads(layers_json)
         assert isinstance(parsed, list)
-        assert all(
-            "handles" in item and "layer_name" in item for item in parsed
-        )
+        assert all("handles" in item and "layer_name" in item for item in parsed)
 
 
 class TestBatchResponseFormat:
@@ -117,17 +118,9 @@ class TestBatchResponseFormat:
 
     def test_batch_response_includes_summary(self):
         """Test that batch responses include count summaries."""
-        response = {
-            "total": 3,
-            "created": 3,
-            "results": []
-        }
+        response = {"total": 3, "created": 3, "results": []}
         assert "total" in response
-        has_count = (
-            "created" in response
-            or "renamed" in response
-            or "changed" in response
-        )
+        has_count = "created" in response or "renamed" in response or "changed" in response
         assert has_count
 
     def test_batch_response_includes_results(self):
@@ -137,13 +130,11 @@ class TestBatchResponseFormat:
             "created": 2,
             "results": [
                 {"index": 0, "handle": "ABC123", "success": True},
-                {"index": 1, "handle": "ABC124", "success": True}
-            ]
+                {"index": 1, "handle": "ABC124", "success": True},
+            ],
         }
         assert isinstance(response["results"], list)
-        has_required = all(
-            "index" in r and "success" in r for r in response["results"]
-        )
+        has_required = all("index" in r and "success" in r for r in response["results"])
         assert has_required
 
     def test_batch_response_handles_errors(self):
@@ -153,8 +144,8 @@ class TestBatchResponseFormat:
             "created": 1,
             "results": [
                 {"index": 0, "handle": "ABC123", "success": True},
-                {"index": 1, "success": False, "error": "Invalid radius"}
-            ]
+                {"index": 1, "success": False, "error": "Invalid radius"},
+            ],
         }
         assert response["total"] == 2
         assert response["created"] == 1

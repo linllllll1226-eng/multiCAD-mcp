@@ -67,9 +67,7 @@ def register_task_tools(mcp: Any) -> None:
     @cad_tool(mcp, "cad_get_entity_provenance")
     def cad_get_entity_provenance(handle: str) -> str:
         """Read the assistant XData and actual CAD state for one handle."""
-        result = TaskTrackingManager(_store()).get_entity_provenance(
-            get_current_adapter(), handle
-        )
+        result = TaskTrackingManager(_store()).get_entity_provenance(get_current_adapter(), handle)
         return _result(result)
 
     @cad_tool(mcp, "cad_commit_preview_task")
@@ -81,12 +79,9 @@ def register_task_tools(mcp: Any) -> None:
         """Commit only one verified task; confirmed=false returns a manifest."""
         mapping = json.loads(layer_mapping_json)
         if not isinstance(mapping, dict) or not all(
-            isinstance(key, str) and isinstance(value, str)
-            for key, value in mapping.items()
+            isinstance(key, str) and isinstance(value, str) for key, value in mapping.items()
         ):
-            raise ValueError(
-                "layer_mapping_json must be a JSON string-to-string object"
-            )
+            raise ValueError("layer_mapping_json must be a JSON string-to-string object")
         result = TaskTrackingManager(_store()).commit_preview_task(
             get_current_adapter(),
             task_id,

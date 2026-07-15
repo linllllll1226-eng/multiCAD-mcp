@@ -198,9 +198,7 @@ def _metadata(
         task_id=task_id,
         execution_result_id=1,
         drawing_profile="general_2d",
-        source_type=(
-            "approximate_reference" if approximate else "explicit_dimension"
-        ),
+        source_type=("approximate_reference" if approximate else "explicit_dimension"),
         confidence=0.5 if approximate else 1.0,
         approximate_reference=approximate,
         drawing_name=drawing_name,
@@ -279,9 +277,7 @@ def test_executor_assigns_unique_task_provenance():
     first_id = generate_task_id()
     second_id = generate_task_id()
     assert first_id != second_id
-    result = PlanExecutor().execute(
-        adapter, plan, task_id=first_id, execution_result_id=9
-    )
+    result = PlanExecutor().execute(adapter, plan, task_id=first_id, execution_result_id=9)
     assert result["success"]
     metadata = read_entity_provenance(document.HandleToObject(result["handles"][0]))
     assert metadata["task_id"] == first_id
@@ -350,9 +346,7 @@ def test_same_saved_drawing_path_is_case_insensitive(tmp_path):
     _seed_task(store, adapter, "task-a", entity)
     adapter.document.FullName = r"D:\drawings\part-a.dwg"
     adapter.document.Name = "part-a.dwg"
-    result = TaskTrackingManager(store).commit_preview_task(
-        adapter, "task-a", confirmed=True
-    )
+    result = TaskTrackingManager(store).commit_preview_task(adapter, "task-a", confirmed=True)
     assert result["success"]
 
 
@@ -374,9 +368,7 @@ def test_entity_provenance_from_other_drawing_is_blocked(tmp_path):
     )
     write_entity_provenance(adapter, adapter.document, entity, foreign_metadata)
     with pytest.raises(PermissionError, match="provenance belongs"):
-        TaskTrackingManager(store).commit_preview_task(
-            adapter, "task-a", confirmed=True
-        )
+        TaskTrackingManager(store).commit_preview_task(adapter, "task-a", confirmed=True)
     assert entity.Layer == "AI_PREVIEW_OUTLINE"
 
 
@@ -404,9 +396,7 @@ def test_task_list_marks_other_drawing_without_resolving_handles(tmp_path):
 
 
 def test_task_queries_default_to_summaries_and_paginate_entities(tmp_path):
-    entities = [
-        FakeEntity(f"A{index}", "AI_PREVIEW_OUTLINE") for index in range(1, 4)
-    ]
+    entities = [FakeEntity(f"A{index}", "AI_PREVIEW_OUTLINE") for index in range(1, 4)]
     adapter = FakeAdapter(FakeDocument(entities))
     store = SQLiteMemoryStore(tmp_path / "memory.db")
     _seed_task(store, adapter, "task-a", entities[0])
@@ -537,9 +527,7 @@ def test_committed_revert_requires_extra_confirmation(tmp_path):
     adapter = FakeAdapter(FakeDocument([entity]))
     store = SQLiteMemoryStore(tmp_path / "memory.db")
     _seed_task(store, adapter, "task-a", entity, status="committed")
-    result = TaskTrackingManager(store).revert_task(
-        adapter, "task-a", confirmed=True
-    )
+    result = TaskTrackingManager(store).revert_task(adapter, "task-a", confirmed=True)
     assert result["requires_extra_confirmation"]
     assert entity.Layer == "OUTLINE"
 
@@ -583,9 +571,7 @@ def test_failed_verified_task_can_still_be_safely_reverted(tmp_path):
     adapter = FakeAdapter(FakeDocument([entity]))
     store = SQLiteMemoryStore(tmp_path / "memory.db")
     _seed_task(store, adapter, "task-a", entity, status="failed")
-    result = TaskTrackingManager(store).revert_task(
-        adapter, "task-a", confirmed=True
-    )
+    result = TaskTrackingManager(store).revert_task(adapter, "task-a", confirmed=True)
     assert result["success"]
     assert entity.Layer == REVERT_LAYER
 
@@ -615,9 +601,7 @@ def test_commit_failure_restores_previously_changed_entities(tmp_path):
         ],
     )
     with pytest.raises(RuntimeError, match="refused layer"):
-        TaskTrackingManager(store).commit_preview_task(
-            adapter, "task-a", confirmed=True
-        )
+        TaskTrackingManager(store).commit_preview_task(adapter, "task-a", confirmed=True)
     assert first.Layer == "AI_PREVIEW_OUTLINE"
     assert second.Layer == "AI_PREVIEW_OUTLINE"
     assert store.get_ai_task("task-a")["status"] == "verified"
@@ -630,9 +614,7 @@ def test_database_failure_restores_cad_layer_and_xdata(tmp_path):
     _seed_task(store, adapter, "task-a", entity)
     before_metadata = read_entity_provenance(entity)
     with pytest.raises(RuntimeError, match="simulated database failure"):
-        TaskTrackingManager(store).commit_preview_task(
-            adapter, "task-a", confirmed=True
-        )
+        TaskTrackingManager(store).commit_preview_task(adapter, "task-a", confirmed=True)
     assert entity.Layer == "AI_PREVIEW_OUTLINE"
     assert read_entity_provenance(entity) == before_metadata
     assert store.get_ai_task("task-a")["status"] == "verified"

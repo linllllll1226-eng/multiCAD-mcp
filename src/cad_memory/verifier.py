@@ -94,9 +94,7 @@ def _numeric_error(target: Any, actual: Any) -> float | None:
 class PostExecutionVerifier:
     """Compare planned targets with freshly read entity properties."""
 
-    def verify(
-        self, adapter: Any, plan: DrawingPlan, handles: list[str]
-    ) -> dict[str, Any]:
+    def verify(self, adapter: Any, plan: DrawingPlan, handles: list[str]) -> dict[str, Any]:
         """Read each handle from CAD and compare it with the matching plan item."""
         if len(handles) != len(plan.entities):
             return {
@@ -145,9 +143,7 @@ class PostExecutionVerifier:
                 checks["effective_linetype"] = ["HIDDEN", "HIDDEN2", "HIDDENX2"]
         kind = target.entity_type.lower()
         if kind == "line":
-            checks.update(
-                start=target.coordinates["start"], end=target.coordinates["end"]
-            )
+            checks.update(start=target.coordinates["start"], end=target.coordinates["end"])
             a, b = target.coordinates["start"], target.coordinates["end"]
             checks["length"] = math.dist(a[:2], b[:2])
         elif kind == "rectangle":
@@ -159,14 +155,10 @@ class PostExecutionVerifier:
         elif kind == "polyline" and "closed" in target.dimensions:
             checks["closed"] = bool(target.dimensions["closed"])
         elif kind == "circle":
-            checks.update(
-                center=target.coordinates["center"], radius=target.dimensions["radius"]
-            )
+            checks.update(center=target.coordinates["center"], radius=target.dimensions["radius"])
             checks["diameter"] = 2.0 * target.dimensions["radius"]
         elif kind == "arc":
-            checks.update(
-                center=target.coordinates["center"], radius=target.dimensions["radius"]
-            )
+            checks.update(center=target.coordinates["center"], radius=target.dimensions["radius"])
         elif kind in {
             "aligned_dimension",
             "linear_dimension",
@@ -182,12 +174,8 @@ class PostExecutionVerifier:
         for name, target_value in checks.items():
             actual_value = actual.get(name)
             error = _numeric_error(target_value, actual_value)
-            if name in {"object_type", "effective_linetype"} and isinstance(
-                target_value, list
-            ):
-                passed = str(actual_value).lower() in {
-                    value.lower() for value in target_value
-                }
+            if name in {"object_type", "effective_linetype"} and isinstance(target_value, list):
+                passed = str(actual_value).lower() in {value.lower() for value in target_value}
             elif error is not None:
                 passed = error <= tolerance
             else:

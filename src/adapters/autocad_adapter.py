@@ -7,31 +7,32 @@ Supports AutoCAD, ZWCAD, GstarCAD, and BricsCAD via factory pattern.
 Refactored to use mixin classes for better organization and maintainability.
 """
 
-import threading
 import logging
-from typing import Dict, Any
+import threading
+from typing import Any, Dict
 
 from core import (
     CADInterface,
     get_cad_config,
 )
+from mcp_tools.constants import COLOR_MAP
+
 from .mixins import (
-    UtilityMixin,
+    BlockMixin,
     ConnectionMixin,
     DrawingMixin,
-    LayerMixin,
-    FileMixin,
-    ViewMixin,
-    SelectionMixin,
     EntityMixin,
-    ManipulationMixin,
-    BlockMixin,
     ExportMixin,
-    com_session,
+    FileMixin,
+    LayerMixin,
+    ManipulationMixin,
+    SelectionMixin,
     SelectionSetManager,
+    UtilityMixin,
+    ViewMixin,
     com_safe,
+    com_session,
 )
-from mcp_tools.constants import COLOR_MAP
 
 logger = logging.getLogger(__name__)
 

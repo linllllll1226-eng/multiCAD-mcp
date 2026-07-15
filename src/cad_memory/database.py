@@ -183,9 +183,7 @@ class SQLiteMemoryStore:
         """Add a correction; only user-confirmed rows are enforceable."""
         values = [category, trigger, wrong_behavior, correct_behavior]
         if any(not str(value).strip() for value in values):
-            raise ValueError(
-                "category, trigger, wrong_behavior and correct_behavior are required"
-            )
+            raise ValueError("category, trigger, wrong_behavior and correct_behavior are required")
         with self._lock, self._connection() as connection:
             cursor = connection.execute(
                 """
@@ -273,9 +271,7 @@ class SQLiteMemoryStore:
         if not confirmed:
             raise PermissionError("Deletion requires confirmed=true")
         with self._lock, self._connection() as connection:
-            cursor = connection.execute(
-                f"DELETE FROM {table} WHERE id = ?", (int(record_id),)
-            )
+            cursor = connection.execute(f"DELETE FROM {table} WHERE id = ?", (int(record_id),))
             return cursor.rowcount == 1
 
     def save_drawing_profile(
@@ -443,9 +439,7 @@ class SQLiteMemoryStore:
                 raise KeyError(f"AI task not found: {task_id}")
         return self.get_ai_task(task_id)
 
-    def get_ai_task(
-        self, task_id: str, *, include_entities: bool = True
-    ) -> dict[str, Any]:
+    def get_ai_task(self, task_id: str, *, include_entities: bool = True) -> dict[str, Any]:
         """Return one task and optionally its recorded entity rows."""
         with self._lock, self._connection() as connection:
             row = connection.execute(
@@ -476,10 +470,14 @@ class SQLiteMemoryStore:
             where = " WHERE status = ?"
             params.append(status)
         params.extend([limit, offset])
-        columns = "*" if include_details else """
+        columns = (
+            "*"
+            if include_details
+            else """
             task_id, task_name, drawing_name, drawing_full_name,
             drawing_profile, status, execution_result_id, created_at, updated_at
         """
+        )
         with self._lock, self._connection() as connection:
             rows = connection.execute(
                 f"""
@@ -590,7 +588,7 @@ class SQLiteMemoryStore:
         with self._lock, self._connection() as connection:
             cursor = connection.execute(
                 f"""
-                UPDATE ai_task_entities SET {', '.join(assignments)}
+                UPDATE ai_task_entities SET {", ".join(assignments)}
                 WHERE task_id = ? AND handle = ?
                 """,
                 params,
@@ -628,15 +626,13 @@ class SQLiteMemoryStore:
                 params.extend([task_id, update["handle"]])
                 cursor = connection.execute(
                     f"""
-                    UPDATE ai_task_entities SET {', '.join(assignments)}
+                    UPDATE ai_task_entities SET {", ".join(assignments)}
                     WHERE task_id = ? AND handle = ?
                     """,
                     params,
                 )
                 if cursor.rowcount != 1:
-                    raise KeyError(
-                        f"Task entity not found: {task_id}/{update['handle']}"
-                    )
+                    raise KeyError(f"Task entity not found: {task_id}/{update['handle']}")
             cursor = connection.execute(
                 """
                 UPDATE ai_tasks SET status = ?, updated_at = ?

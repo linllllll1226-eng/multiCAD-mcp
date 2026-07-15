@@ -1,11 +1,12 @@
 """
 Abstract base class for CAD application adapters.
+
 Defines the common interface that all CAD adapters must implement.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, List, Tuple
 from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class LineWeight(Enum):
@@ -72,6 +73,7 @@ class CADInterface(ABC):
     def connect(self) -> bool:
         """
         Connect to a CAD application.
+
         Try to get existing instance first, then start new if needed.
 
         Returns:
@@ -619,6 +621,7 @@ class CADInterface(ABC):
     def delete_layer(self, name: str) -> bool:
         """
         Delete a layer from the drawing.
+
         Cannot delete layer 0 (standard layer).
 
         Args:
@@ -717,9 +720,7 @@ class CADInterface(ABC):
     # ========== File Operations ==========
 
     @abstractmethod
-    def save_drawing(
-        self, filepath: str = "", filename: str = "", format: str = "dwg"
-    ) -> bool:
+    def save_drawing(self, filepath: str = "", filename: str = "", format: str = "dwg") -> bool:
         """
         Save the current drawing to a file.
 
@@ -991,9 +992,7 @@ class CADInterface(ABC):
     # ========== Entity Manipulation ==========
 
     @abstractmethod
-    def move_entities(
-        self, handles: List[str], offset_x: float, offset_y: float
-    ) -> bool:
+    def move_entities(self, handles: List[str], offset_x: float, offset_y: float) -> bool:
         """
         Move entities by an offset.
 

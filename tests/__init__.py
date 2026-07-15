@@ -1,3 +1,1 @@
-"""
-Test suite for multiCAD-MCP.
-"""
+"""Test suite for multiCAD-MCP."""

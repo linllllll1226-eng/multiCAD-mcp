@@ -5,9 +5,9 @@ Handles all layer management operations.
 """
 
 import logging
-from typing import List, Dict, Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from core import LayerError, ColorError
+from core import ColorError, LayerError
 from mcp_tools.constants import COLOR_MAP
 
 logger = logging.getLogger(__name__)
@@ -29,13 +29,9 @@ class LayerMixin:
 
         def validate_lineweight(self, weight: int) -> int: ...
 
-        def _fast_get_property(
-            self, obj: Any, property_name: str, default: Any = None
-        ) -> Any: ...
+        def _fast_get_property(self, obj: Any, property_name: str, default: Any = None) -> Any: ...
 
-        def _safe_get_property(
-            self, obj: Any, property_name: str, default: Any = None
-        ) -> Any: ...
+        def _safe_get_property(self, obj: Any, property_name: str, default: Any = None) -> Any: ...
 
     def create_layer(
         self,
@@ -77,17 +73,13 @@ class LayerMixin:
                     loaded = False
                     for definition_file in ("acadiso.lin", "acad.lin"):
                         try:
-                            document.Linetypes.Load(
-                                requested_linetype, definition_file
-                            )
+                            document.Linetypes.Load(requested_linetype, definition_file)
                             loaded = True
                             break
                         except Exception:
                             continue
                     if not loaded:
-                        raise ValueError(
-                            f"Unable to load linetype: {requested_linetype}"
-                        )
+                        raise ValueError(f"Unable to load linetype: {requested_linetype}")
             layer_obj.Linetype = requested_linetype
 
             logger.info(f"Created layer '{name}'")
@@ -190,9 +182,10 @@ class LayerMixin:
             else:
                 # Fallback: Use SelectionSets to quickly count entities per layer (O(K))
                 logger.debug("Using SelectionSets to count entities by layer")
+                import time
+
                 import pythoncom
                 import win32com.client
-                import time
 
                 perf_start = time.perf_counter()
 
@@ -224,9 +217,7 @@ class LayerMixin:
                 with _temp_ss(document, "MCP_LAYER_COUNTS") as ss:
                     for layer in document.Layers:
                         lname = layer.Name
-                        fd = to_variant_array(
-                            pythoncom.VT_ARRAY | pythoncom.VT_VARIANT, [lname]
-                        )
+                        fd = to_variant_array(pythoncom.VT_ARRAY | pythoncom.VT_VARIANT, [lname])
                         try:
                             ss.Clear()
                             ss.Select(5, None, None, ft, fd)  # 5 = acSelectionSetAll
@@ -234,14 +225,10 @@ class LayerMixin:
                             if count > 0:
                                 layer_counts[lname] = count
                         except Exception as e:
-                            logger.debug(
-                                f"Failed to count entities on layer {lname}: {e}"
-                            )
+                            logger.debug(f"Failed to count entities on layer {lname}: {e}")
 
                 elapsed = time.perf_counter() - perf_start
-                logger.info(
-                    f"[PERF] Layer counting via SelectionSets took {elapsed:.3f}s"
-                )
+                logger.info(f"[PERF] Layer counting via SelectionSets took {elapsed:.3f}s")
 
             # Build layer information
             for layer in document.Layers:
@@ -264,9 +251,7 @@ class LayerMixin:
 
                     # Convert to name if possible, or keep as string numeric
                     color_map_reverse = {v: k for k, v in COLOR_MAP.items()}
-                    color_name = color_map_reverse.get(
-                        layer_color_val, str(layer_color_val)
-                    )
+                    color_name = color_map_reverse.get(layer_color_val, str(layer_color_val))
 
                     logger.info(
                         f"Layer '{layer.Name}' extracted color: {layer_color_val} ({color_name})"
@@ -276,16 +261,10 @@ class LayerMixin:
                         "Name": str(layer.Name).strip(),
                         "ObjectCount": layer_counts.get(str(layer.Name).strip(), 0),
                         "Color": color_name,
-                        "Linetype": str(
-                            self._safe_get_property(layer, "Linetype", "Continuous")
-                        ),
-                        "Lineweight": str(
-                            self._safe_get_property(layer, "Lineweight", "Default")
-                        ),
+                        "Linetype": str(self._safe_get_property(layer, "Linetype", "Continuous")),
+                        "Lineweight": str(self._safe_get_property(layer, "Lineweight", "Default")),
                         "IsLocked": bool(self._safe_get_property(layer, "Lock", False)),
-                        "IsVisible": bool(
-                            self._safe_get_property(layer, "LayerOn", True)
-                        )
+                        "IsVisible": bool(self._safe_get_property(layer, "LayerOn", True))
                         and not bool(self._safe_get_property(layer, "Frozen", False)),
                     }
                     layers_info.append(layer_info)
@@ -451,12 +430,11 @@ class LayerMixin:
             if color_index == 256:
                 raise ColorError(
                     str(color_index),
-                    "Color 'bylayer' (256) is not valid for layers. Use a specific ACI color (1-255).",
+                    "Color 'bylayer' (256) is not valid for layers. "
+                    "Use a specific ACI color (1-255).",
                 )
             if not (0 <= color_index <= 255):
-                raise ColorError(
-                    str(color_index), "Invalid color index. Must be 0-255."
-                )
+                raise ColorError(str(color_index), "Invalid color index. Must be 0-255.")
 
             # Create AcCmColor object (modern method)
             color_obj = app.GetInterfaceObject("AutoCAD.AcCmColor.20")
@@ -527,9 +505,7 @@ class LayerMixin:
                     changed_count += 1
 
                 except Exception as e:
-                    results.append(
-                        {"handle": handle, "success": False, "error": str(e)}
-                    )
+                    results.append({"handle": handle, "success": False, "error": str(e)})
                     failed_count += 1
 
             logger.info(f"Set {changed_count}/{len(handles)} entities to ByLayer color")

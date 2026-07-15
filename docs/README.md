@@ -1,9 +1,10 @@
 # Documentation Index
 
-## v0.3 at a glance
+## v0.4 at a glance
 
 - 23 MCP tools: 7 upstream unified tools plus 16 enhanced workflow tools.
-- 245 automated tests at the v0.3 integration point.
+- Local PaddleOCR for scanned images and image-only PDFs, with engineering dimension parsing.
+- Full-repository Ruff and formatting gates plus a release-hygiene check.
 - Python 3.10+, FastMCP 3.1+, Windows COM.
 - AutoCAD 2022 is the verified target for guarded execution, task tracking, and native dimension checks.
 
@@ -27,6 +28,7 @@
 | [CAD_SAFETY_HARDENING.md](CAD_SAFETY_HARDENING.md) | Strict write policy, receipts, and rollback boundaries |
 | [CAD_UX_IMPROVEMENTS.md](CAD_UX_IMPROVEMENTS.md) | Launcher, profiles, backups, and template preparation |
 | [CAD_VISION_PIPELINE.md](CAD_VISION_PIPELINE.md) | Optional PDF/image preprocessing and evidence extraction |
+| [CAD_OCR.md](CAD_OCR.md) | Local scanned-drawing OCR installation, behavior, benchmark, and troubleshooting |
 | [CAD_VISION_BENCHMARK.md](CAD_VISION_BENCHMARK.md) | Deterministic accuracy and efficiency benchmark methodology |
 
 For enhanced writes, always use:
