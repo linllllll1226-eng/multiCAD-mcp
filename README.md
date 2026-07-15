@@ -1,240 +1,166 @@
-# multiCAD-mcp
+# multiCAD-mcp v0.3
 
-Control your CAD applications with your AI assistant through the Model Context Protocol (MCP).
+`multiCAD-mcp` connects MCP-compatible AI clients to Windows CAD applications through COM. This branch adds a guarded AutoCAD 2022 workflow for image reconstruction, verified drawing, persistent corrections, task tracking, and task-scoped commit/revert operations.
 
-[![Documentation](https://img.shields.io/badge/docs-mkdocs--material-blue?logo=readthedocs)](https://AnCode666.github.io/multiCAD-mcp/)
-[![License](https://img.shields.io/github/license/AnCode666/multiCAD-mcp)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
-[![MCP](https://img.shields.io/badge/MCP-FastMCP%202.0-green)](https://github.com/jlowin/fastmcp)
+> This repository extends the Apache-2.0 project by [AnCode666/multiCAD-mcp](https://github.com/AnCode666/multiCAD-mcp). The original seven unified tools and multi-CAD adapters remain available.
 
-**Documentation**: https://AnCode666.github.io/multiCAD-mcp/
+## Current status
 
-## What is multiCAD-mcp?
+- **Primary verified target:** AutoCAD 2022 on Windows (`COM 24.1`).
+- **MCP surface:** 23 tools: 7 upstream unified CAD tools plus 16 guarded workflow, memory, task, and vision tools.
+- **Tests:** 245 automated tests at the v0.3 integration point.
+- **Transport:** local STDIO; no network listener is required for Codex.
+- **Safe entry point:** `src/server_memory.py`.
+- **Legacy entry point:** `src/server.py` (retained for upstream compatibility, without the complete guarded workflow).
 
-multiCAD-mcp is an MCP server that lets you control your CAD software using AI assistants like Claude for desktop or Cursor. Whether you're drawing shapes, managing layers, automating repetitive tasks, o doing complex ones, you can do it all through text-based instructions.
+The upstream adapters also target ZWCAD, GstarCAD, and BricsCAD. The enhanced validation, native dimension, XData, and task-lifecycle acceptance tests in this branch were performed against AutoCAD 2022; other CAD products may expose different COM properties.
 
-## Features
+## Guarded write workflow
 
-- **Multiple CAD Support**: Works with AutoCAD®, ZWCAD®, GstarCAD®, and BricsCAD®
-- **7 Unified MCP Tools**: Clean access to **56 CAD commands** for drawing, layers, entities, blocks, and files
-- **Block Attributes** (v0.2.0+): Read and write block attribute values
-- **Block Creation**: Create blocks from entities or user selection
-- **Simple command execution**: "Draw a red circle at 50,50 with radius 25" - no complex syntax needed
-- **Complex tasks execution**: "Draw the graph of y = sen(X) and label the axes"
-- **Simple Integration**: Works with Claude, Cursor, VS Code, and any MCP-compatible client
-- **Fast & Reliable**: Efficient COM-based architecture for real-time CAD control
-- **Flexible**: Direct tool calls or natural language - choose what works for you
-
-## System Requirements
-
-- **Windows OS** (required - uses Windows COM technology)
-- **Python 3.10 or higher**
-- **One or more CAD applications** installed in your computer
-
-## Installation
-
-Detailed installation instructions are available in [docs/01-SETUP.md](docs/01-SETUP.md).
-
-Quick start:
-
-```powershell
-# Install uv (if not installed)
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# Clone
-git clone https://github.com/AnCode666/multiCAD-mcp.git
-cd multiCAD-mcp
-uv sync --dev
-uv run python -m pip install --upgrade pywin32
-```
-
-## Setup with Claude Desktop
-
-Add this to your `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "multiCAD": {
-      "command": "C:\\path\\to\\multiCAD-mcp\\.venv\\Scripts\\python.exe",
-      "args": ["C:\\path\\to\\multiCAD-mcp\\src\\server.py"]
-    }
-  }
-}
-```
-
-**Important**: Use the full path to the Python interpreter in your virtual environment (`.venv\Scripts\python.exe`), not the system `py` command. This ensures Claude Desktop uses the correct Python environment with all required dependencies installed.
-
-Replace `C:\path\to\multiCAD-mcp` with your actual installation path.
-
-## Usage Examples
-
-### Direct Tool Calls
-
-multiCAD-mcp provides **7 unified MCP tools** that provide access to **56 different CAD commands**. This architecture is designed for high efficiency, allowing multiple operations to be dispatched in single calls, reducing API overhead by up to 70%.
-
-- **Drawing & Shapes**: Lines, circles, arcs, rectangles, polylines, splines, and tables.
-- **Block Management**: Create blocks (from entities or selection), insert (batch/single), list, and audit.
-- **Layer Management**: Create, list, rename/delete (batch), and toggle visibility.
-- **Entity Manipulation**: Move, rotate, scale, copy/paste, and selection (by type/layer/color).
-- **Property Management**: Change color/layer (batch/single) and set color ByLayer.
-- **Data & Export**: Extract data (JSON), export to Excel (total or selected), and entity debug.
-- **View & Navigation**: Zoom extents, fit view, and undo/redo operations.
-- **Files & Session**: Save (DWG/DXF/PDF), new/close drawings, and multi-drawing switching.
-- **Connection & Control**: Connection lifecycle, diagnostics, and natural language fallback.
-
-> [!TIP]
-> Each tool accepts multiple operations in a single call using a compact shorthand format, reducing API overhead by up to 70%.
-
-### Selected Entity Export
-
-Export or extract data from only the entities currently selected in your CAD viewport:
+Every enhanced write must follow:
 
 ```text
-# Export selected entities to Excel
-export_data(scope="selected", format="excel", filename="selected_entities.xlsx")
-
-# Extract selected entity data as JSON
-export_data(scope="selected", format="json")
+cad_plan_validate
+        -> cad_execute_plan
+        -> cad_verify_execution
 ```
 
-### Complex Tasks
+The workflow validates units, geometry, sources, constraints, layers, uncertainty, and destructive intent before execution. It then reads real CAD entity data back from the drawing and records a verification receipt. A write is not considered successful merely because the planned tool calls completed.
 
-You can ask your AI assistant to execute complex tasks that require multiple tools, such as drawing graphs of equations, complex title blocks, or data tables.
+Legacy write tools remain available for compatibility, but the included `autocad-drawing-assistant` Skill does not silently fall back to them when an enhanced step fails.
 
-## Configuration
+## Enhanced features
 
-Edit `src/config.json` to customize:
+| Area | Capability |
+|---|---|
+| Drawing memory | User-confirmed corrections, drawing profiles, and execution results in local SQLite |
+| Planning | Structured entities, constraints, confidence, source type, and uncertain items |
+| Verification | Target/actual/error/pass comparison using real AutoCAD entity data |
+| Dimension safety | Native diameter/radius dimensions, empty `TextOverride`, background fill checks |
+| Task tracking | Stable `task_id`, persistent entity provenance, and AI-created-object lookup |
+| Safe lifecycle | Verification-gated preview commit and task-scoped revert without global `UNDO` |
+| Vision assistance | Optional PDF/raster preprocessing, line/circle/text evidence extraction, cache, and benchmarks |
+| Usability | Drawing profiles, write-before-backup helper, guarded template initializer, and one-click launcher |
 
-```json
-{
-  "logging_level": "INFO",
-  "cad": {
-    "autocad": {
-      "startup_wait_time": 20,
-      "command_delay": 0.5
-    }
-  },
-  "dashboard": {
-    "port": 8888
-  },
-  "output": {
-    "directory": "~/Documents/multiCAD Exports",
-    "allow_arbitrary_paths": true
-  }
-}
-```
+## Requirements
 
-**Key settings**:
+- Windows
+- Python 3.10+
+- AutoCAD 2022 for the verified enhanced workflow
+- `uv`
+- Codex or another MCP-compatible client
 
-- **`logging_level`**: Set to `DEBUG`, `INFO`, `WARNING`, or `ERROR` to control log verbosity
-- **`startup_wait_time`**: Seconds to wait for CAD application to start (increase if CAD is slow)
-- **`command_delay`**: Delay between commands in seconds
-- **`dashboard.port`**: Web dashboard port (default: 8888)
-- **`open_dashboard`**: [host, port] — open web dashboard in browser (default from config.json: 8888)
-- **`output.directory`**: Default directory for saved drawings and exports
-- **`output.allow_arbitrary_paths`**: Set to `true` to allow saving files to any absolute path on the system, bypassing path-traversal prevention checks.
-
-## Troubleshooting
-
-### Checking Logs
-
-multiCAD-mcp generates detailed logs to help diagnose issues:
-
-**Log Location**: `logs/multicad_mcp.log` (created automatically in the project's `logs/` directory)
-
-**View logs**:
+## Install
 
 ```powershell
-# View latest 50 log entries
-Get-Content logs/multicad_mcp.log -Tail 50
-
-# View all logs
-Get-Content logs/multicad_mcp.log
-
-# Monitor logs in real-time (updates automatically)
-Get-Content logs/multicad_mcp.log -Wait -Tail 10
+cd D:\AI\multiCAD-mcp
+git switch release/cad-ai-v0.3
+uv sync --extra dev --extra vision --extra docs
 ```
 
-**Adjust log level** in `src/config.json`:
+When this branch is published to a fork, replace the local checkout step with that fork's clone URL. Cloning the upstream repository alone does not currently provide these v0.3 extensions. For a minimal upstream-only installation, `uv sync` is sufficient. The `vision` extra installs OpenCV, NumPy, and PyMuPDF; it does not add a cloud OCR service.
 
-```json
-{
-  "logging_level": "DEBUG"
-}
+## Configure Codex
+
+Add the enhanced local STDIO server to `%USERPROFILE%\.codex\config.toml`:
+
+```toml
+[mcp_servers.autocad]
+command = "D:\\AI\\multiCAD-mcp\\.venv\\Scripts\\python.exe"
+args = ["D:\\AI\\multiCAD-mcp\\src\\server_memory.py"]
+cwd = "D:\\AI\\multiCAD-mcp"
+startup_timeout_sec = 30
+tool_timeout_sec = 120
+enabled = true
 ```
 
-Available levels (from most to least verbose):
+Adjust paths for your installation. Start AutoCAD and open a blank drawing or a saved copy before requesting a write.
 
-- `DEBUG`: Detailed information for diagnosing problems
-- `INFO`: General informational messages (default)
-- `WARNING`: Warning messages for potential issues
-- `ERROR`: Error messages only
+Verify registration:
 
-**Note**: Restart the MCP server after changing configuration.
+```powershell
+codex mcp list
+```
 
-### "Connection failed"
+## Typical use
 
-- Make sure your CAD application is running
-- Check that you have the correct version installed
-- Verify Windows COM is properly configured
-- Use `manage_session` with `{"action": "status"}` to diagnose the issue
-- Check logs for detailed error messages (see above)
+```text
+Use $autocad-drawing-assistant.
+Load the university_mechanical_drawing profile.
+Analyze this image first. Use only explicit dimensions and uniquely derived
+constraints. List uncertain geometry and do not draw until I confirm.
+```
 
-The dashboard provides a real-time view of the CAD state. You can manually refresh the data using the "Refresh Now" button.
+After confirmation:
 
-- **Dashboard Port**: Change `dashboard.port` in `src/config.json` to your preferred port.
-- **Manual Refresh**: Click the refresh button to sync with current CAD state.
+```text
+Start preview. Use the guarded three-stage workflow and verify every principal
+dimension from real CAD entity data.
+```
 
-### "Not connected"
+Convenience intents supported by the Skill include `分析这张图`, `开始预览`, `正式提交`, `检查图纸`, and `撤回本次`.
 
-- The server automatically connects on first use
-- If it fails, restart the CAD application and try again
-- Use `manage_session` with `{"action": "connect"}` to re-establish connection
-- Review logs to identify connection issues
+## Safety model
 
-### Commands not working
+- Preview layers are used by default.
+- `approximate_reference` geometry is rejected from formal outline layers.
+- Destructive operations require explicit confirmation.
+- Committed and reverted entities are selected by verified `task_id`, not the current selection or global `UNDO`.
+- The local memory database is ignored by Git.
+- Arbitrary export paths are disabled by default.
+- The one-click launcher does not open, save, or modify a DWG automatically.
+- Use a blank drawing for acceptance tests and a saved copy for real work.
 
-- Check your CAD application's command line for messages or errors
-- Ensure coordinates are in valid format (e.g., "0,0" for 2D, "0,0,0" for 3D)
-- Verify connection status with `manage_session` → `{"action": "status"}`
-- Enable DEBUG logging to see detailed command execution information
+## Tool groups
+
+The seven upstream unified tools are:
+
+```text
+manage_session, draw_entities, manage_layers, manage_files,
+manage_entities, manage_blocks, export_data
+```
+
+The enhanced entry point adds:
+
+```text
+cad_memory_search, cad_memory_add_correction, cad_memory_list,
+cad_memory_delete, cad_save_drawing_profile, cad_load_drawing_profile,
+cad_plan_validate, cad_execute_plan, cad_verify_execution,
+cad_list_ai_tasks, cad_get_task_entities, cad_get_entity_provenance,
+cad_commit_preview_task, cad_revert_ai_task,
+cad_analyze_source, cad_vision_capabilities
+```
+
+## Test and quality checks
+
+```powershell
+uv run pytest -q -p no:cacheprovider
+uv run ruff check src tests scripts --select E9,F63,F7,F82
+uv run mkdocs build --strict
+```
+
+The Windows CI workflow runs the test suite on Python 3.10, 3.11, and 3.12.
+
+## Known limits
+
+- Missing dimensions in a picture cannot become reliable manufacturing dimensions. Uncertain geometry must remain separate.
+- Vision preprocessing improves evidence extraction but does not replace engineering interpretation; raster OCR is intentionally not bundled.
+- Current benchmarks are deterministic engineering fixtures, not a claim of universal recognition accuracy.
+- Some arbitrary CAD edit/delete operations are deliberately unsupported by the guarded executor.
+- Dimension layout still benefits from a visual audit after entity-level verification.
+- An AutoCAD-integrated sidebar and voice panel are outside the v0.3 scope.
 
 ## Documentation
 
-- [**Setup & Installation**](docs/01-SETUP.md) - detailed setup guide and Claude Desktop integration.
-- [**Architecture**](docs/02-ARCHITECTURE.md) - system design and extension guide.
-- [**Troubleshooting**](docs/04-TROUBLESHOOTING.md) - solutions for common issues.
-- [**Reference**](docs/05-REFERENCE.md) - complete MCP tool reference.
-- [**Changelog**](docs/07-CHANGELOG.md) - version history.
+- [Documentation index](docs/README.md)
+- [Memory and validation](docs/CAD_MEMORY_VALIDATION.md)
+- [Task tracking and safe lifecycle](docs/CAD_TASK_TRACKING.md)
+- [Safety hardening](docs/CAD_SAFETY_HARDENING.md)
+- [Vision pipeline](docs/CAD_VISION_PIPELINE.md)
+- [Vision benchmark](docs/CAD_VISION_BENCHMARK.md)
+- [Usability layer](docs/CAD_UX_IMPROVEMENTS.md)
+- [Changelog](docs/03-CHANGELOG.md)
 
-## Supported CAD Applications
+## License and attribution
 
-| Application | Status | Notes |
-|------------|--------|-------|
-| AutoCAD 2018+ | ✅ Full Support | Primary implementation |
-| ZWCAD 2020+ | ✅ Full Support | Uses AutoCAD-compatible API |
-| GstarCAD 2020+ | ✅ Full Support | Uses AutoCAD-compatible API |
-| BricsCAD 21+ | ✅ Full Support | Uses AutoCAD-compatible API |
-
-## Project Status
-
-**Version 0.2.0** - Unified tool architecture, block attribute management, and modern packaging.
-
-## License
-
-Apache License 2.0 - see [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-This project builds upon:
-- [CAD-MCP](https://github.com/daobataotie/CAD-MCP)
-- [Easy-MCP-AutoCAD](https://github.com/zh19980811/Easy-MCP-AutoCad)
-
-## Support
-
-For issues, questions, or feature requests, please open an issue on the repository.
-
----
-
-**Need help setting up?** Start with the installation steps above.
+Apache-2.0. Preserve the upstream copyright, license, and attribution when redistributing this derivative work.

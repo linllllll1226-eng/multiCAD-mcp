@@ -5,6 +5,46 @@ All notable changes to multiCAD-mcp will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-15
+
+### Added
+
+- **Guarded CAD workflow**: structured plan validation, controlled execution, and verification against real AutoCAD entity data.
+- **Local learning layer**: user-confirmed corrections, drawing profiles, and execution results stored in a Git-ignored SQLite database.
+- **Task lifecycle**: persistent `task_id` metadata, entity provenance, verification-gated preview commit, and task-scoped revert without global `UNDO`.
+- **Dimension safeguards**: native diameter/radius dimensions, empty `TextOverride`, fill-state verification, and geometry-preserving annotation moves.
+- **Vision assistance**: optional PDF/raster preprocessing, CAD evidence extraction, cache, capability reporting, and deterministic benchmarks.
+- **Usability layer**: one-click launcher, profile synchronization, write-before-backup helper, and guarded template initializer.
+- **Expanded MCP surface**: 23 tools in the enhanced entry point (7 upstream unified tools plus 16 enhanced tools).
+- **Windows CI**: Python 3.10-3.12 tests, critical Ruff checks, focused vision lint checks, and strict documentation builds.
+
+### Changed
+
+- Enhanced Codex deployments now use `src/server_memory.py`; `src/server.py` remains available for upstream compatibility.
+- Package version advanced to `0.3.0` and documentation was reorganized around the guarded AutoCAD workflow.
+- AutoCAD 2022 is explicitly documented as the accepted target for enhanced COM behavior.
+
+### Fixed
+
+- Corrected AutoCAD 2D polyline coordinate verification.
+- Hardened Codex Desktop startup selection and stale npm-shim fallback behavior.
+- Removed a duplicate spline mapping and corrected boolean type comparisons found during release linting.
+
+### Security
+
+- Enhanced writes fail closed when validation, execution, or verification is unavailable.
+- Approximate geometry cannot enter formal outline layers.
+- Commit and revert operations are scoped to verified AI task metadata.
+- Local memory and vision cache files remain excluded from version control.
+
+### Known limitations
+
+- The guarded executor intentionally does not support every arbitrary edit or delete operation.
+- Vision preprocessing is evidence assistance, not a substitute for missing engineering dimensions or human visual review.
+- Enhanced COM acceptance testing is currently specific to AutoCAD 2022.
+
+---
+
 ## [0.2.1] - 2026-06-27
 
 ### Added

@@ -1,5 +1,5 @@
 site_name: multiCAD-mcp
-site_description: MCP server for natural language control of CAD applications (AutoCAD, ZWCAD, GstarCAD, BricsCAD) via Windows COM
+site_description: MCP server for guarded AI control of AutoCAD and other Windows COM CAD applications
 site_url: https://ancode666.github.io/multiCAD-mcp
 repo_url: https://github.com/ancode666/multiCAD-mcp
 repo_name: AnCode666/multiCAD-mcp
@@ -68,6 +68,13 @@ nav:
   - Home: README.md
   - Getting Started: 01-SETUP.md
   - Architecture: 02-ARCHITECTURE.md
+  - Enhanced AutoCAD Workflow:
+      - Memory and Validation: CAD_MEMORY_VALIDATION.md
+      - Task Tracking: CAD_TASK_TRACKING.md
+      - Safety Hardening: CAD_SAFETY_HARDENING.md
+      - Usability Layer: CAD_UX_IMPROVEMENTS.md
+      - Vision Pipeline: CAD_VISION_PIPELINE.md
+      - Vision Benchmark: CAD_VISION_BENCHMARK.md
   - Web Dashboard: 06-WEB-DASHBOARD.md
   - API Reference:
       - Overview: api/index.md

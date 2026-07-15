@@ -56,3 +56,7 @@ data/*.db-wal
 data/*.sqlite
 data/*.sqlite3
 data/vision_cache/
+
+# Local operator notes and timestamped script backups
+/AUTOCAD_CODEX_SETUP_SUMMARY.md
+scripts/Start-CAD-AI.ps1.bak-*

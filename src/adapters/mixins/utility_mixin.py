@@ -152,12 +152,12 @@ def com_safe(return_type: type = bool, operation_name: str = "operation"):
                 # COM error attributes: args[0] = hresult, args[2] = strerror
                 error_msg = f"COM error: {str(e)}"
                 logger.error(f"Failed in {func.__name__}: {error_msg}")
-                if return_type == bool:
+                if return_type is bool:
                     return False  # type: ignore
                 raise CADOperationError(operation_name, error_msg)
             except Exception as e:
                 logger.error(f"Failed in {func.__name__}: {e}")
-                if return_type == bool:
+                if return_type is bool:
                     return False  # type: ignore
                 raise CADOperationError(operation_name, str(e))
 

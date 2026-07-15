@@ -39,10 +39,9 @@ If it fails:
 ### Workflow
 
 ### Before Committing
-1. `uv run pytest tests/ -v` - All 181 tests must pass
-2. `uv run ruff format src/` - Format
-3. `uv run ruff check src/` - Lint
-4. `uv run mypy src/` - Type check (must be clean)
+1. `uv run pytest -q -p no:cacheprovider` - All release tests must pass
+2. `uv run ruff check src tests scripts --select E9,F63,F7,F82` - Critical lint must pass
+3. `uv run mkdocs build --strict` - Documentation must build when docs dependencies are installed
 
 ### Drawing not visible
 
@@ -84,18 +83,18 @@ Edit `src/config.json`:
 View logs:
 ```powershell
 # Setup
-uv sync --dev
+uv sync --extra dev --extra vision
 uv run python -m pip install --upgrade pywin32
 
 # Run
-uv run python src/server.py
+uv run python src/server_memory.py
 
 # Test
-uv run pytest tests/ -v                      # 181 tests
-npx -y @modelcontextprotocol/inspector uv run python src/server.py
+uv run pytest -q -p no:cacheprovider
+npx -y @modelcontextprotocol/inspector uv run python src/server_memory.py
 
 # Quality
-uv run ruff format src/ && uv run ruff check src/ && uv run mypy src/
+uv run ruff check src tests scripts --select E9,F63,F7,F82
 ```
 
 Browse to `http://localhost:3000` to test tools interactively.
