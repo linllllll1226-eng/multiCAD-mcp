@@ -1,5 +1,7 @@
 # multiCAD-mcp v0.4
 
+**English** | [简体中文](README_zh-CN.md)
+
 `multiCAD-mcp` connects MCP-compatible AI clients to Windows CAD applications through COM. This release adds a guarded AutoCAD 2022 workflow for image reconstruction, verified drawing, persistent corrections, task tracking, task-scoped commit/revert operations, and optional local OCR for scanned drawings.
 
 > This repository extends the Apache-2.0 project by [AnCode666/multiCAD-mcp](https://github.com/AnCode666/multiCAD-mcp). The original seven unified tools and multi-CAD adapters remain available.
@@ -54,12 +56,17 @@ Legacy write tools remain available for compatibility, but the included `autocad
 ## Install
 
 ```powershell
-cd D:\AI\multiCAD-mcp
-git switch release/cad-ai-v0.4
+git clone https://github.com/linllllll1226-eng/multiCAD-mcp.git
+cd multiCAD-mcp
+git checkout v0.4.0
 uv sync --extra dev --extra vision --extra docs --extra ocr
 ```
 
-When this branch is published to a fork, replace the local checkout step with that fork's clone URL. Cloning the upstream repository alone does not currently provide these v0.4 extensions. For a minimal upstream-only installation, `uv sync` is sufficient. The `vision` extra installs OpenCV, NumPy, and PyMuPDF; the `ocr` extra adds PaddleOCR and local Paddle inference. No cloud OCR service is required.
+Use `main` instead of the release tag if you want the latest post-release documentation and fixes.
+Cloning the upstream repository alone does not currently provide these v0.4 extensions. For a
+minimal upstream-only installation, `uv sync` is sufficient. The `vision` extra installs OpenCV,
+NumPy, and PyMuPDF; the `ocr` extra adds PaddleOCR and local Paddle inference. No cloud OCR
+service is required.
 
 ## Configure Codex
 
@@ -159,7 +166,7 @@ The Windows CI workflow runs the test suite on Python 3.10, 3.11, and 3.12.
 - Current benchmarks are deterministic engineering fixtures, not a claim of universal recognition accuracy.
 - Some arbitrary CAD edit/delete operations are deliberately unsupported by the guarded executor.
 - Dimension layout still benefits from a visual audit after entity-level verification.
-- An AutoCAD-integrated sidebar and voice panel are outside the v0.3 scope.
+- An AutoCAD-integrated sidebar and voice panel are outside the v0.4 scope.
 
 ## Documentation
 
