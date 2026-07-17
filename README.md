@@ -9,8 +9,8 @@
 ## Current status
 
 - **Primary verified target:** AutoCAD 2022 on Windows (`COM 24.1`).
-- **MCP surface:** 23 tools: 7 upstream unified CAD tools plus 16 guarded workflow, memory, task, and vision tools.
-- **Tests:** 252 automated tests at the v0.4 security release gate.
+- **MCP surface:** 25 tools: 7 upstream unified CAD tools plus 18 guarded workflow, memory, task, and vision tools.
+- **Tests:** 293 unit tests, including background rendering, source completeness, required-annotation gates, OCR recovery, close-line preservation, and HWND capture checks.
 - **Quality gate:** full Ruff lint/format checks and release-hygiene validation.
 - **Transport:** local STDIO; no network listener is required for Codex.
 - **Safe entry point:** `src/server_memory.py`.
@@ -108,7 +108,10 @@ dimension from real CAD entity data.
 
 For scanned drawings, `cad_analyze_source` uses OCR by default. Vector PDFs keep
 their more accurate embedded paths/text route. The first raster OCR request may
-download official models; later identical analyses use the local result cache.
+download official models. Compact summaries and later detailed-sample requests now
+share one canonical cache entry, so requesting samples does not repeat heavy OCR.
+Damaged compound callouts such as `20V65` are retained only as low-confidence,
+confirmation-required diameter/depth candidates.
 
 Convenience intents supported by the Skill include `分析这张图`, `开始预览`, `正式提交`, `检查图纸`, and `撤回本次`.
 

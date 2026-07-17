@@ -15,7 +15,12 @@ from cad_memory.provenance import (
     read_entity_provenance,
     write_entity_provenance,
 )
-from cad_memory.task_manager import REVERT_LAYER, TaskTrackingManager
+from cad_memory.task_manager import (
+    REVERT_LAYER,
+    TaskTrackingManager,
+    _geometry_signature,
+    _geometry_values_equal,
+)
 from mcp_tools.tools.validation import _rollback_task_handles
 
 
@@ -520,6 +525,38 @@ def test_revert_is_task_scoped_and_does_not_touch_user_entity(tmp_path):
     assert document.Layers.Item(REVERT_LAYER).LayerOn is False
     assert store.get_ai_task("task-a")["status"] == "reverted"
     assert store.get_ai_task("task-b")["status"] == "verified"
+
+
+def test_geometry_signature_ignores_display_only_changes():
+    """Layer-driven display and dimension layout are not model geometry."""
+    entity = FakeEntity("A1", "AI_PREVIEW_OUTLINE")
+    entity.TextPosition = (10.0, 20.0, 0.0)
+    before = _geometry_signature(entity)
+    entity.Layer = REVERT_LAYER
+    entity.Linetype = "HIDDEN2"
+    entity.TextPosition = (12.0, 22.0, 0.0)
+    entity.TextFill = True
+    assert _geometry_signature(entity) == before
+
+
+def test_geometry_comparison_tolerates_com_float_noise():
+    before = {
+        "measurement": 20.0,
+        "center": [27.5, 40.0, 0.0],
+        "coordinates": [0.0, 0.0, 55.0, 60.0],
+    }
+    after = {
+        "measurement": 20.0 + 1e-12,
+        "center": [27.5 - 1e-12, 40.0, 0.0],
+        "coordinates": [0.0, 0.0, 55.0, 60.0 + 1e-12],
+    }
+    assert _geometry_values_equal(before, after)
+
+
+def test_geometry_comparison_rejects_real_change():
+    before = {"measurement": 20.0, "center": [27.5, 40.0, 0.0]}
+    after = {"measurement": 20.01, "center": [27.5, 40.0, 0.0]}
+    assert not _geometry_values_equal(before, after)
 
 
 def test_committed_revert_requires_extra_confirmation(tmp_path):

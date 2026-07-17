@@ -70,6 +70,30 @@ def register_task_tools(mcp: Any) -> None:
         result = TaskTrackingManager(_store()).get_entity_provenance(get_current_adapter(), handle)
         return _result(result)
 
+    @cad_tool(mcp, "cad_render_task_audit")
+    def cad_render_task_audit(
+        task_id: str,
+        width: int = 1600,
+        height: int = 1000,
+        expected_manifest_json: str = "{}",
+        source_path: str = "",
+        source_page: int = 1,
+    ) -> str:
+        """Render a task to PNG/SVG without AutoCAD window capture."""
+        expected_manifest = json.loads(expected_manifest_json)
+        if not isinstance(expected_manifest, dict):
+            raise ValueError("expected_manifest_json must be a JSON object")
+        result = TaskTrackingManager(_store()).render_task_audit(
+            get_current_adapter(),
+            task_id,
+            width=width,
+            height=height,
+            expected_manifest=expected_manifest,
+            source_path=source_path,
+            source_page=source_page,
+        )
+        return _result(result)
+
     @cad_tool(mcp, "cad_commit_preview_task")
     def cad_commit_preview_task(
         task_id: str,

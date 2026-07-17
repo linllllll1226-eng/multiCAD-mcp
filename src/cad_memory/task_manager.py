@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import math
 import ntpath
 from typing import Any
+
+from cad_vision.audit_renderer import render_task_audit
 
 from .database import SQLiteMemoryStore
 from .executor import undo_group
@@ -28,9 +31,40 @@ REVERT_LAYER = "AI_REVERTED"
 
 def _geometry_signature(entity: Any) -> dict[str, Any]:
     state = read_entity_state(entity)
-    state.pop("layer", None)
-    state.pop("handle", None)
-    return state
+    # Layer changes may legitimately alter effective linetype and can cause
+    # AutoCAD to recompute dimension text placement. Neither is model
+    # geometry. Guard only the geometric/measured properties so commit/revert
+    # still rejects coordinate or measurement changes without false positives.
+    geometry_keys = {
+        "object_type",
+        "closed",
+        "start",
+        "end",
+        "center",
+        "radius",
+        "diameter",
+        "length",
+        "measurement",
+        "coordinates",
+        "width",
+        "height",
+    }
+    return {key: value for key, value in state.items() if key in geometry_keys}
+
+
+def _geometry_values_equal(left: Any, right: Any, *, tolerance: float = 1e-9) -> bool:
+    """Compare CAD geometry recursively while tolerating COM float noise."""
+    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+        return math.isclose(float(left), float(right), rel_tol=tolerance, abs_tol=tolerance)
+    if isinstance(left, dict) and isinstance(right, dict):
+        return left.keys() == right.keys() and all(
+            _geometry_values_equal(left[key], right[key], tolerance=tolerance) for key in left
+        )
+    if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
+        return len(left) == len(right) and all(
+            _geometry_values_equal(a, b, tolerance=tolerance) for a, b in zip(left, right)
+        )
+    return left == right
 
 
 def _get_layer(document: Any, name: str) -> Any:
@@ -216,6 +250,52 @@ class TaskTrackingManager:
             "provenance": read_entity_provenance(entity),
             "actual": read_entity_state(entity),
         }
+
+    def render_task_audit(
+        self,
+        adapter: Any,
+        task_id: str,
+        *,
+        width: int = 1600,
+        height: int = 1000,
+        expected_manifest: dict[str, Any] | None = None,
+        source_path: str = "",
+        source_page: int = 1,
+    ) -> dict[str, Any]:
+        """Render fresh task geometry without activating or capturing AutoCAD."""
+        task = self.store.get_ai_task(task_id, include_entities=False)
+        document = adapter._get_document("cad_render_task_audit")
+        _assert_document_identity(task, document, source=f"Task {task_id}")
+        plan_entities = list((task.get("plan_data") or {}).get("entities") or [])
+        records = []
+        missing = []
+        for index, row in enumerate(self.store.get_ai_task_entities(task_id)):
+            try:
+                entity = document.HandleToObject(row["handle"])
+                metadata = read_entity_provenance(entity)
+                if row["owned"] and (not metadata or metadata.get("task_id") != task_id):
+                    raise PermissionError("Entity provenance does not match task")
+                records.append(
+                    {
+                        **row,
+                        "actual": read_entity_state(entity),
+                        "planned": plan_entities[index] if index < len(plan_entities) else {},
+                    }
+                )
+            except Exception as exc:
+                missing.append({"handle": row["handle"], "error": str(exc)})
+        result = render_task_audit(
+            task,
+            records,
+            width=width,
+            height=height,
+            expected_manifest=expected_manifest,
+            source_path=source_path,
+            source_page=source_page,
+        )
+        result["missing"] = missing
+        result["source_entity_count"] = len(records)
+        return result
 
     def commit_preview_task(
         self,
@@ -468,7 +548,10 @@ class TaskTrackingManager:
         snapshots: dict[str, dict[str, Any]],
     ) -> None:
         for row, entity, _metadata in owned:
-            if _geometry_signature(entity) != snapshots[row["handle"]]["geometry"]:
+            if not _geometry_values_equal(
+                _geometry_signature(entity),
+                snapshots[row["handle"]]["geometry"],
+            ):
                 raise RuntimeError(f"Task operation changed geometry for handle {row['handle']}")
 
     @staticmethod

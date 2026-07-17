@@ -164,13 +164,17 @@ def _screenshot(spec: Dict[str, Any]) -> Dict[str, Any]:
     """Capture window screenshot including UI chrome."""
     adapter = get_adapter()
     try:
-        result = adapter.get_screenshot()
-        return {
+        result = adapter.get_screenshot(allow_restore=bool(spec.get("allow_restore", False)))
+        response = {
             "success": True,
             "detail": f"Screenshot saved to {result['path']}",
             "path": result["path"],
             "data": result["data"],
         }
+        response.update(
+            {key: value for key, value in result.items() if key not in {"path", "data"}}
+        )
+        return response
     except Exception as e:
         return {"success": False, "detail": str(e)}
 
@@ -284,7 +288,9 @@ def register_session_tools(mcp):
 
                 View:
                 - zoom_extents:   (no fields) — zoom to show all entities
-                - screenshot:     (no fields) — capture window screenshot (includes UI chrome)
+                - screenshot:     [allow_restore] — capture the real CAD window by HWND;
+                                  validates pixels and may restore a minimized window only when
+                                  allow_restore=true
                 - export_view:    (no fields) — export view using internal rendering (pure drawing, works when window is obscured)
 
                 History:

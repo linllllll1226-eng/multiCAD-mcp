@@ -5,6 +5,24 @@ All notable changes to multiCAD-mcp will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+- Added `cad_render_task_audit` for background-safe SVG/PNG rendering from fresh task-owned
+  AutoCAD entities, source-derived completeness manifests, and source/CAD comparison images.
+- Added `cad_capture_live_window` with COM HWND, process/title/class fallback discovery,
+  `PrintWindow` capture, pixel-quality rejection, and no-COM operation.
+- Added mandatory source-aware visual completion gates to the AutoCAD drawing Skill.
+- Added canonical sample-independent source caching, one-time OCR pipeline recovery, compound
+  hole/depth parsing, and binary-stroke detection for lines only 2-3 pixels apart.
+- Fixed live-window discovery so the `AfxMDIFrame` drawing window outranks AutoCAD's text window.
+- Clarified that `cad_render_task_audit` is the primary true-background review path; live UI
+  capture remains optional and never blocks the off-screen completion gate.
+- Expanded the enhanced MCP surface to 25 tools and the unit suite to 293 passing tests.
+- Added manifest-level `required_annotations` so missing source notes, depth/through callouts,
+  angles, keyway notes, and unit notes fail the background completeness gate.
+- Added guarded plain-text creation and verification, Unicode-aware audit rendering, and
+  recovery from Windows virtual minimized window coordinates.
+
 ## [0.4.0] - 2026-07-15
 
 ### Added

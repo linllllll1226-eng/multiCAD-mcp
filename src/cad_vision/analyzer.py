@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 import time
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -14,9 +15,40 @@ from .image import analyze_image_geometry
 from .ocr import extract_ocr, ocr_capabilities
 from .pdf import extract_vector_pdf
 
-PIPELINE_VERSION = "1.1.0"
+PIPELINE_VERSION = "1.3.1"
 SUPPORTED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 DEFAULT_CACHE_DIR = Path(__file__).resolve().parents[2] / "data" / "vision_cache"
+
+_SAMPLE_KEYS = {
+    "line_samples",
+    "circle_samples",
+    "close_parallel_pairs",
+    "vector_samples",
+    "text_samples",
+}
+
+
+def _result_view(result: dict[str, Any], *, include_samples: bool) -> dict[str, Any]:
+    """Return one request view without changing the canonical cached payload."""
+    view = deepcopy(result)
+    if include_samples:
+        view["samples_included"] = True
+        return view
+
+    def strip(value: Any) -> None:
+        if isinstance(value, dict):
+            for key in tuple(value):
+                if key in _SAMPLE_KEYS:
+                    value.pop(key, None)
+                else:
+                    strip(value[key])
+        elif isinstance(value, list):
+            for item in value:
+                strip(item)
+
+    strip(view)
+    view["samples_included"] = False
+    return view
 
 
 def vision_capabilities() -> dict[str, Any]:
@@ -91,7 +123,7 @@ def analyze_source(
     options = {
         "pipeline_version": PIPELINE_VERSION,
         "max_pages": max_pages,
-        "include_samples": bool(include_samples),
+        "sample_policy": "canonical_bounded",
         "use_ocr": bool(use_ocr),
         "ocr_language": ocr_language,
         "ocr_min_confidence": float(ocr_min_confidence),
@@ -104,18 +136,19 @@ def analyze_source(
 
     if use_cache and cache_path.is_file():
         cached = json.loads(cache_path.read_text(encoding="utf-8"))
-        cached["cache_hit"] = True
-        cached["request_ms"] = round((time.perf_counter() - started) * 1000.0, 3)
-        return cached
+        view = _result_view(cached, include_samples=include_samples)
+        view["cache_hit"] = True
+        view["request_ms"] = round((time.perf_counter() - started) * 1000.0, 3)
+        return view
 
     if source.suffix.lower() == ".pdf":
         analysis = extract_vector_pdf(
             source,
             max_pages=max_pages,
-            include_samples=include_samples,
+            include_samples=True,
         )
     else:
-        analysis = analyze_image_geometry(source, include_samples=include_samples)
+        analysis = analyze_image_geometry(source, include_samples=True)
 
     should_run_ocr = use_ocr and (
         source.suffix.lower() != ".pdf" or analysis.get("text_word_count", 0) == 0
@@ -126,7 +159,7 @@ def analyze_source(
             language=ocr_language,
             min_confidence=ocr_min_confidence,
             max_pages=max_pages,
-            include_samples=include_samples,
+            include_samples=True,
         )
     elif use_ocr:
         analysis["ocr"] = {
@@ -153,4 +186,4 @@ def analyze_source(
     if use_cache:
         cache_dir.mkdir(parents=True, exist_ok=True)
         cache_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-    return result
+    return _result_view(result, include_samples=include_samples)

@@ -58,6 +58,7 @@ data/*.sqlite3
 data/vision_cache/
 data/ocr_benchmark/
 data/paddle_models/
+data/audit_reports/
 
 # Local operator notes and timestamped script backups
 /AUTOCAD_CODEX_SETUP_SUMMARY.md

@@ -13,7 +13,8 @@ from typing import TYPE_CHECKING, Dict
 
 import win32con
 import win32gui
-from PIL import ImageGrab
+
+from cad_vision.window_capture import capture_cad_window, discover_cad_window
 
 logger = logging.getLogger(__name__)
 
@@ -67,36 +68,17 @@ class ViewMixin:
         Raises:
             Exception: If CAD window cannot be found
         """
-        from mcp_tools.constants import AUTOCAD_WINDOW_CLASSES, CAD_WINDOW_SEARCH_TERMS
+        application = self._get_application("find_cad_window")
+        document = self._get_document("find_cad_window")
+        result = discover_cad_window(
+            application,
+            cad_type=self.cad_type,
+            document_name=str(getattr(document, "Name", "")),
+        )
+        logger.debug("Found CAD window: %s", result)
+        return int(result["hwnd"])
 
-        search_term = CAD_WINDOW_SEARCH_TERMS.get(self.cad_type, "")
-        hwnd = 0
-
-        def enum_windows_callback(h, result):
-            nonlocal hwnd
-            if hwnd or not win32gui.IsWindowVisible(h):
-                return
-
-            title = win32gui.GetWindowText(h)
-            class_name = win32gui.GetClassName(h)
-
-            # Matching: title contains search term AND class is a CAD window class
-            title_match = search_term.lower() in title.lower()
-            class_match = any(p in class_name for p in AUTOCAD_WINDOW_CLASSES)
-
-            # Exclude VBA editor and other non-main windows
-            if title_match and class_match and "VBA" not in title:
-                hwnd = h
-                logger.debug(f"Found CAD window: title='{title}', class='{class_name}', hwnd={h}")
-
-        win32gui.EnumWindows(enum_windows_callback, None)
-
-        if not hwnd:
-            raise Exception(f"Could not find window for {self.cad_type}")
-
-        return hwnd
-
-    def get_screenshot(self) -> Dict[str, str]:
+    def get_screenshot(self, allow_restore: bool = False) -> Dict[str, str]:
         """
         Capture a screenshot of the CAD application window.
 
@@ -107,28 +89,22 @@ class ViewMixin:
             Exception: If screenshot fails
         """
         try:
-            self._validate_connection()
-
-            # Find the CAD window using strict matching
-            hwnd = self._find_cad_window()
-
-            # Bring to front (optional, but good for clean screenshot)
-            # Handle minimized state
-            if win32gui.IsIconic(hwnd):
-                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-
             try:
-                win32gui.SetForegroundWindow(hwnd)
-            except Exception as e:
-                logger.warning(f"Could not bring window to front: {e}")
-
-            # Get window bounds
-            rect = win32gui.GetWindowRect(hwnd)
-            x, y, w, h = rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1]
-            logger.debug(f"Capturing screenshot for HWND {hwnd} at {x},{y} {w}x{h}")
-
-            # Capture
-            image = ImageGrab.grab(bbox=(x, y, x + w, y + h), all_screens=True)
+                self._validate_connection()
+                application = self._get_application("get_screenshot")
+                document = self._get_document("get_screenshot")
+                document_name = str(getattr(document, "Name", ""))
+            except Exception as exc:
+                logger.warning("COM unavailable for screenshot discovery; using HWND scan: %s", exc)
+                application = object()
+                document_name = ""
+            window = discover_cad_window(
+                application,
+                cad_type=self.cad_type,
+                document_name=document_name,
+            )
+            captured = capture_cad_window(int(window["hwnd"]), allow_restore=allow_restore)
+            image = captured.pop("image")
 
             # Prepare filename and resolve path using centralized utility
             filename = f"cad_screenshot_{os.getpid()}.png"
@@ -142,7 +118,12 @@ class ViewMixin:
 
             logger.info(f"Screenshot saved to {filepath}")
 
-            return {"path": filepath, "data": encoded_string}
+            return {
+                "path": filepath,
+                "data": encoded_string,
+                "window": window,
+                **captured,
+            }
 
         except Exception as e:
             logger.error(f"Screenshot failed: {e}")

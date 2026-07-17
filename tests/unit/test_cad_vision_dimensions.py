@@ -25,3 +25,26 @@ def test_parse_structured_dimension_types() -> None:
 
 def test_unrelated_text_is_not_promoted_to_dimension() -> None:
     assert parse_dimension_text("TYPICAL SUPPORT BRACKET") == []
+
+
+def test_compound_hole_callout_returns_diameter_and_depth() -> None:
+    parsed = parse_dimension_text("Ø20 DEEP 65")
+    assert [(item["kind"], item["value"]) for item in parsed] == [
+        ("diameter", 20.0),
+        ("depth", 65.0),
+    ]
+
+
+def test_number_before_deep_is_parsed() -> None:
+    parsed = parse_dimension_text("KEYWAY IS 8 DEEP")
+    assert [(item["kind"], item["value"]) for item in parsed] == [("depth", 8.0)]
+
+
+def test_damaged_hole_symbol_is_low_confidence_and_requires_confirmation() -> None:
+    parsed = parse_dimension_text("20V65")
+    assert [(item["kind"], item["value"]) for item in parsed] == [
+        ("diameter", 20.0),
+        ("depth", 65.0),
+    ]
+    assert all(item["needs_confirmation"] for item in parsed)
+    assert all(item["confidence"] == 0.65 for item in parsed)

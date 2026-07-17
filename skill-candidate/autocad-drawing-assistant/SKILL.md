@@ -52,9 +52,16 @@ Use the currently connected `multiCAD-mcp` CAD tools to work on the active AutoC
   visual ambiguity. Treat pixel geometry as candidates only. Never promote pixel
   distances to formal production dimensions without an explicit dimension or a
   user-confirmed geometric constraint.
+- Inspect `close_parallel_pair_count` and `close_parallel_pairs` before planning.
+  Treat every reported pair as two distinct source boundaries until explicit
+  geometry proves otherwise; never collapse close hidden, center, slot, wall, or
+  outline lines into one CAD entity merely because their pixel gap is small.
 - Reuse cached results for the same source SHA-256 and options. Start with
   `include_samples=false` for a compact summary; request bounded samples only when
-  the summary is insufficient.
+  the summary is insufficient. Both requests share one canonical cache entry and
+  must not trigger duplicate OCR.
+- Treat OCR records with `needs_confirmation=true` as uncertain evidence. Keep
+  them out of formal dimensions until the source image or user confirms them.
 - Do not claim OCR coverage when `ocr_provider_available=false`. Continue with
   model vision and clearly mark uncertain text instead of inventing a value.
 - If source analysis fails, report the exact failure. Do not compensate by calling
@@ -111,7 +118,55 @@ Group each approved operation into one undoable unit whenever the available CAD 
 - When dimension text overlaps an outline, centerline, hidden line, or another dimension, move only the dimension text and dimension-line position.
 - Run `REGEN` after dimension or linetype display changes when the CAD interface supports it.
 
+### Lay out dimensions in ordered lanes
+
+- Compute a bounding box for each orthographic view before placing dimensions. Associate every dimension with exactly one view; never let a dimension from one view cross into another view's region.
+- Reserve dimension lanes on the top, bottom, left, and right of each view. Put local/smaller dimensions closest to the outline and overall dimensions outermost.
+- Use the active drawing profile's text height as the scale. Start the first lane about `2-3 x text_height` from the outline, keep adjacent parallel lanes about `1.5-2 x text_height` apart, and keep equal spacing within one dimension group.
+- Align chain and baseline dimensions on common horizontal or vertical lines. Keep their text baselines, arrow directions, and extension-line offsets visually consistent.
+- Prefer blank space outside the view. Use an interior dimension only when it fits in a genuinely empty area without crossing visible, hidden, center, hatch, or other annotation objects.
+- Distribute dimensions across available sides instead of stacking every dimension on one side. Do not place a dimension farther than `8 x text_height` from its associated view unless the sheet layout leaves no safe lane; report that exception instead of silently accepting it.
+- Treat `DIMENSION_TEXT_OVERLAP`, `DIMENSION_TEXT_GEOMETRY_COLLISION`, or `DIMENSION_TOO_FAR` from `cad_render_task_audit` as a failed layout gate. Correct presentation with a separately validated `layout_only` plan, then verify and render again.
+- In multi-part or multi-sheet batches, finish and visually audit one view group before starting the next. A batch is not complete while dimensions overlap, cross into a neighboring view, form visibly uneven lanes, or float far away from their source view.
+
 ## Verify the completed work from CAD data
+
+### Enforce source-aware visual completion gates
+
+- For every image/PDF reconstruction, build a compact source-derived audit manifest before
+  writing. Include minimum line/circle counts, every critical visible boundary as a required
+  segment, every explicit hole as a required circle, every required note/callout as a
+  `required_annotation`, and one region per orthographic view.
+  Derive coordinates only from explicit dimensions or confirmed constraints; never convert
+  pixel distance into a formal CAD dimension.
+- Inventory source annotations before drawing. Put required `THRU`, depth, angle, count,
+  thread, keyway, unit, and general-note text into `required_annotations`; a missing required
+  annotation is a failed completeness gate even when all geometry and measurements pass.
+- Represent both members of every confirmed close parallel pair as separate
+  `required_segments`. A missing member is a failed completeness gate, not a
+  permissible simplification.
+- After `cad_verify_execution` passes, call `cad_render_task_audit` with the exact `task_id`,
+  the original `source_path` and page, and `expected_manifest_json`. Treat
+  `manifest_comparison.passed=false`, duplicate geometry, missing task entities, or an absent
+  comparison artifact as a failed completion gate. Do not say the drawing is complete.
+- Review `source_vs_cad.png` for view count, missing/extra boundaries, holes, hidden lines,
+  centerlines, view overlap, and projection consistency. This off-screen render is the primary
+  geometry audit and works while AutoCAD is covered or in the background.
+- After geometry passes, call `cad_capture_live_window` once per completed batch to inspect
+  real AutoCAD dimension placement, text overlap, linetype appearance, and spacing. Do not
+  capture after every entity; batch capture is faster and avoids unnecessary context use.
+- Require `audit.dimension_layout_passed=true` from the off-screen audit. Then use the live
+  capture to confirm aligned lanes, consistent offsets, readable text, and balanced placement
+  around each view; numeric verification alone is not sufficient for dimension layout.
+- Prefer the standalone `cad_capture_live_window` when the adapter cannot obtain a COM proxy
+  or HWND. It discovers the main CAD process/window independently and validates pixels so a
+  black or uniform image is not reported as success.
+- If the real UI is minimized or cannot provide valid pixels, do not restore or focus it unless
+  the user explicitly permits `allow_restore=true`. Continue with `cad_render_task_audit` and
+  report the UI layout check as pending rather than guessing.
+- Never use a screenshot alone as proof of dimensions. CAD entity verification proves numeric
+  geometry; the source manifest and off-screen comparison prove completeness; the live UI
+  screenshot proves presentation. Require all applicable evidence before reporting success.
 
 1. Re-read every newly created or modified CAD object. Do not infer success from the plan, a screenshot, or the intended command.
 2. For every major dimension, report a comparison containing:

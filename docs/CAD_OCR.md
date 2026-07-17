@@ -31,9 +31,19 @@ another local directory.
 - `max_pages`: bounded to at most 50 pages.
 - `use_cache`: caches identical source/options combinations locally.
 
+Compact and detailed-sample requests share one canonical cache entry. The OCR
+pipeline also discards and rebuilds one corrupted native inference object after a
+runtime error, then retries exactly once. User-injected/test providers are never
+retried silently.
+
 Returned OCR evidence includes text, confidence, bounding box, page number, and
 parsed engineering candidates such as diameter, radius, linear tolerance,
 angle, depth, count, and thread annotations.
+
+The parser can return multiple records from one compound callout. It supports
+both `DEEP 8` and `8 DEEP`. A damaged OCR token such as `20V65` is retained as a
+low-confidence diameter/depth candidate with `needs_confirmation=true`; guarded
+planning must not promote it without source or user confirmation.
 
 ## Verified benchmark
 
