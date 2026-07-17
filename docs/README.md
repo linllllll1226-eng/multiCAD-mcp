@@ -2,7 +2,8 @@
 
 ## v0.4 at a glance
 
-- 23 MCP tools: 7 upstream unified tools plus 16 enhanced workflow tools.
+- 25 MCP tools: 7 upstream unified tools plus 18 enhanced workflow tools.
+- Background-safe task rendering and independent HWND capture for source/CAD visual audits.
 - Local PaddleOCR for scanned images and image-only PDFs, with engineering dimension parsing.
 - Full-repository Ruff and formatting gates plus a release-hygiene check.
 - Python 3.10+, FastMCP 3.1+, Windows COM.

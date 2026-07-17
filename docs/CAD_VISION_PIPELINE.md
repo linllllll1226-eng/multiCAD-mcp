@@ -15,9 +15,17 @@ The enhanced MCP has two read-only source-analysis tools:
    skew, deskews the image, then reports line and circle candidates.
 3. Convert common dimension annotations into typed records such as diameter,
    radius, angle, depth, count, tolerance, and thread.
-4. Cache by source SHA-256, pipeline version, and analysis options. Repeating the
-   same request avoids repeated PDF/CV work.
-5. Keep results compact and bounded so MCP responses do not flood model context.
+4. Cache by source SHA-256, pipeline version, and semantic analysis options. A
+   compact summary and a later bounded-sample request share one canonical entry,
+   so changing `include_samples` does not rerun OCR/PDF/CV work.
+5. Preserve close parallel boundaries with two detectors: Hough lines for normal
+   gaps and binary ink-stroke separation for lines only 2-3 pixels apart. One
+   thick stroke is not split into a false pair.
+6. Keep results compact and bounded so MCP responses do not flood model context.
+
+Damaged OCR callouts such as `20V65` are retained as low-confidence,
+`needs_confirmation=true` diameter/depth candidates. They improve recall without
+becoming trusted production dimensions.
 
 ## Install optional dependencies
 

@@ -76,6 +76,7 @@ nav:
       - Vision Pipeline: CAD_VISION_PIPELINE.md
       - Scanned Drawing OCR: CAD_OCR.md
       - Vision Benchmark: CAD_VISION_BENCHMARK.md
+      - Background Visual Audit: CAD_BACKGROUND_AUDIT.md
   - Web Dashboard: 06-WEB-DASHBOARD.md
   - API Reference:
       - Overview: api/index.md

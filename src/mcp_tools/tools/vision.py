@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from cad_vision import analyze_source, vision_capabilities
+from cad_vision.window_capture import capture_live_cad_window
 
 
 def _result(payload: Any) -> str:
@@ -40,5 +41,20 @@ def register_vision_tools(mcp: Any) -> None:
                 use_ocr=use_ocr,
                 ocr_language=ocr_language,
                 ocr_min_confidence=ocr_min_confidence,
+            )
+        )
+
+    @mcp.tool()
+    def cad_capture_live_window(
+        cad_type: str = "autocad",
+        document_name: str = "",
+        allow_restore: bool = False,
+    ) -> str:
+        """Capture the real CAD UI by HWND without requiring an AutoCAD COM proxy."""
+        return _result(
+            capture_live_cad_window(
+                cad_type=cad_type,
+                document_name=document_name,
+                allow_restore=allow_restore,
             )
         )

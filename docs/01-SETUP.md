@@ -47,7 +47,7 @@ Change the paths to match your installation, restart Codex, and run:
 codex mcp list
 ```
 
-`src/server_memory.py` registers 23 tools and is the supported entry point for the enhanced workflow. `src/server.py` remains the legacy upstream-compatible entry point.
+`src/server_memory.py` registers 25 tools and is the supported entry point for the enhanced workflow. `src/server.py` remains the legacy upstream-compatible entry point.
 
 ## First safe test
 

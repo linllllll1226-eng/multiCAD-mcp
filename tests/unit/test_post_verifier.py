@@ -23,6 +23,18 @@ class FakeDimension:
     TextFill = False
 
 
+class FakeAlignedDimension:
+    """Aligned dimension returned for a guarded linear-dimension request."""
+
+    Handle = "D2"
+    ObjectName = "AcDbAlignedDimension"
+    Layer = "AI_PREVIEW_DIM"
+    Linetype = "ByLayer"
+    Measurement = 60.0
+    TextOverride = ""
+    TextFill = False
+
+
 class FakeRectangle:
     """Closed rectangular lightweight polyline returned by AutoCAD."""
 
@@ -141,6 +153,60 @@ def test_actual_circle_matches_center_and_diameter():
         "linetype",
         "object_type",
     } <= properties
+
+
+def test_2d_plan_point_matches_autocad_xyz_point():
+    """An omitted zero elevation must not make a valid 2D line fail."""
+    plan = DrawingPlan.model_validate(
+        {
+            "task_name": "2d-line",
+            "unit": "mm",
+            "user_confirmed": True,
+            "existing_layers": ["AI_PREVIEW_CENTER"],
+            "entities": [
+                {
+                    "entity_type": "line",
+                    "coordinates": {"start": [0, 0], "end": [100, 0]},
+                    "dimensions": {},
+                    "layer": "AI_PREVIEW_CENTER",
+                    "linetype": "ByLayer",
+                    "dimension_source": "explicit_dimension",
+                    "confidence": 1,
+                }
+            ],
+        }
+    )
+    result = PostExecutionVerifier().verify(
+        FakeAdapter({"L1": FakeLine()}, "CENTER2"), plan, ["L1"]
+    )
+    assert result["passed"], result
+
+
+def test_linear_dimension_accepts_aligned_dimension_from_guarded_executor():
+    """The executor's aligned COM object is valid for linear dimensions."""
+    plan = DrawingPlan.model_validate(
+        {
+            "task_name": "linear-dimension",
+            "unit": "mm",
+            "user_confirmed": True,
+            "existing_layers": ["AI_PREVIEW_DIM"],
+            "entities": [
+                {
+                    "entity_type": "linear_dimension",
+                    "coordinates": {"start": [0, 0], "end": [60, 0]},
+                    "dimensions": {"measurement": 60, "offset": 10},
+                    "layer": "AI_PREVIEW_DIM",
+                    "linetype": "ByLayer",
+                    "dimension_source": "explicit_dimension",
+                    "confidence": 1,
+                }
+            ],
+        }
+    )
+    result = PostExecutionVerifier().verify(
+        FakeAdapter({"D2": FakeAlignedDimension()}), plan, ["D2"]
+    )
+    assert result["passed"], result
 
 
 def test_actual_rectangle_reports_width_height_and_closed_state():

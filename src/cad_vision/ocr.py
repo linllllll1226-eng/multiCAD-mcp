@@ -15,6 +15,20 @@ from .dimensions import parse_dimension_text
 _PIPELINE_LOCK = threading.RLock()
 _PIPELINES: dict[tuple[str, str], Any] = {}
 DEFAULT_MODEL_CACHE = Path(__file__).resolve().parents[2] / "data" / "paddle_models"
+_LANGUAGE_ALIASES = {
+    "eng": "en",
+    "english": "en",
+    "zh": "ch",
+    "zh-cn": "ch",
+    "zh_cn": "ch",
+}
+
+
+def _normalize_language(language: str) -> str:
+    normalized = language.strip().lower()
+    if not normalized:
+        raise ValueError("language is required")
+    return _LANGUAGE_ALIASES.get(normalized, normalized)
 
 
 def _configure_runtime_paths() -> Path:
@@ -56,7 +70,8 @@ def _create_pipeline(language: str, device: str) -> Any:
     from paddleocr import PaddleOCR
 
     return PaddleOCR(
-        lang=language,
+        lang=_normalize_language(language),
+        ocr_version="PP-OCRv5",
         device=device,
         engine="paddle_static",
         use_doc_orientation_classify=False,
@@ -66,6 +81,7 @@ def _create_pipeline(language: str, device: str) -> Any:
 
 
 def _get_pipeline(language: str, device: str) -> Any:
+    language = _normalize_language(language)
     key = (language, device)
     with _PIPELINE_LOCK:
         if key not in _PIPELINES:
@@ -77,6 +93,39 @@ def clear_pipeline_cache() -> None:
     """Release cached OCR pipeline objects, primarily for tests and upgrades."""
     with _PIPELINE_LOCK:
         _PIPELINES.clear()
+
+
+def _discard_pipeline(language: str, device: str) -> None:
+    """Discard one possibly-corrupted native OCR pipeline after a runtime error."""
+    key = (_normalize_language(language), device)
+    with _PIPELINE_LOCK:
+        _PIPELINES.pop(key, None)
+
+
+def _predict_with_retry(
+    pipeline: Any,
+    source: Path,
+    *,
+    language: str,
+    device: str,
+    min_confidence: float,
+    pipeline_factory: Callable[[str, str], Any] | None,
+) -> tuple[Any, bool]:
+    """Run PaddleOCR once, rebuilding its native pipeline for one safe retry."""
+    try:
+        return (
+            pipeline.predict(str(source), text_rec_score_thresh=min_confidence),
+            False,
+        )
+    except Exception:
+        if pipeline_factory is not None:
+            raise
+        _discard_pipeline(language, device)
+        fresh_pipeline = _get_pipeline(language, device)
+        return (
+            fresh_pipeline.predict(str(source), text_rec_score_thresh=min_confidence),
+            True,
+        )
 
 
 def _json_result(result: Any) -> dict[str, Any]:
@@ -127,8 +176,7 @@ def extract_ocr(
     min_confidence = float(min_confidence)
     if not 0.0 <= min_confidence <= 1.0:
         raise ValueError("min_confidence must be between 0 and 1")
-    if not language.strip():
-        raise ValueError("language is required")
+    language = _normalize_language(language)
 
     capabilities = ocr_capabilities()
     if pipeline_factory is None and not capabilities["available"]:
@@ -148,9 +196,13 @@ def extract_ocr(
             if pipeline_factory is not None
             else _get_pipeline(language, device)
         )
-        raw_results = pipeline.predict(
-            str(source),
-            text_rec_score_thresh=min_confidence,
+        raw_results, pipeline_rebuilt = _predict_with_retry(
+            pipeline,
+            source,
+            language=language,
+            device=device,
+            min_confidence=min_confidence,
+            pipeline_factory=pipeline_factory,
         )
         pages: list[dict[str, Any]] = []
         texts: list[dict[str, Any]] = []
@@ -177,11 +229,15 @@ def extract_ocr(
                 page_items.append(item)
                 texts.append(item)
                 for parsed in parse_dimension_text(item["text"]):
+                    parse_confidence = float(parsed.get("confidence", 1.0))
+                    combined_confidence = round(parse_confidence * item["confidence"], 4)
                     parsed.update(
                         {
                             "page": page_number,
                             "source_text": item["text"],
-                            "confidence": item["confidence"],
+                            "confidence": combined_confidence,
+                            "ocr_confidence": item["confidence"],
+                            "parse_confidence": parse_confidence,
                             "bbox": item["bbox"],
                         }
                     )
@@ -200,6 +256,7 @@ def extract_ocr(
             "device": device,
             "minimum_confidence": min_confidence,
             "page_count_analyzed": len(pages),
+            "pipeline_rebuilt_after_error": pipeline_rebuilt,
             "text_count": len(texts),
             "dimension_count": len(dimensions),
             "dimensions": dimensions[:200],

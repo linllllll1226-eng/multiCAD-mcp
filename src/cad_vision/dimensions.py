@@ -52,29 +52,65 @@ def parse_dimension_text(text: str) -> list[dict[str, Any]]:
     if thread:
         return [_record("thread", normalized, thread.group(1).replace(" ", ""))]
 
+    records: list[dict[str, Any]] = []
     diameter = re.search(rf"Ø\s*({_NUMBER})", normalized)
     if diameter:
-        return [_record("diameter", normalized, float(diameter.group(1)), unit="mm")]
+        records.append(_record("diameter", normalized, float(diameter.group(1)), unit="mm"))
 
     radius = re.search(rf"\bR\s*({_NUMBER})", normalized)
     if radius:
-        return [_record("radius", normalized, float(radius.group(1)), unit="mm")]
+        records.append(_record("radius", normalized, float(radius.group(1)), unit="mm"))
 
     angle = re.search(rf"({_NUMBER})\s*°", normalized)
     if angle:
-        return [_record("angle", normalized, float(angle.group(1)), unit="degree")]
+        records.append(_record("angle", normalized, float(angle.group(1)), unit="degree"))
 
     depth = re.search(rf"(?:DEPTH|DEEP|深)\s*({_NUMBER})", normalized)
+    depth_value = depth.group(1) if depth else None
+    if depth_value is None:
+        depth = re.search(rf"({_NUMBER})\s*(?:DEPTH|DEEP|深)", normalized)
+        depth_value = depth.group(1) if depth else None
     if depth:
-        return [_record("depth", normalized, float(depth.group(1)), unit="mm")]
+        records.append(_record("depth", normalized, float(depth_value), unit="mm"))
+
+    # PaddleOCR commonly maps a diameter/depth callout such as "Ø20 ↧ 65"
+    # to "20V65". Preserve it as a low-confidence candidate so the model asks
+    # for confirmation instead of silently losing the hole callout or promoting
+    # damaged OCR text to a formal dimension.
+    symbolic_depth = re.search(rf"Ø?\s*({_NUMBER})\s*[V∨⌄⌵↧]\s*({_NUMBER})", normalized)
+    if symbolic_depth:
+        first, second = float(symbolic_depth.group(1)), float(symbolic_depth.group(2))
+        if not diameter:
+            records.append(
+                _record(
+                    "diameter",
+                    normalized,
+                    first,
+                    unit="mm",
+                    confidence=0.65,
+                    needs_confirmation=True,
+                    inference="damaged_diameter_depth_symbol",
+                )
+            )
+        records.append(
+            _record(
+                "depth",
+                normalized,
+                second,
+                unit="mm",
+                confidence=0.65 if not diameter else 0.85,
+                needs_confirmation=True,
+                inference="damaged_depth_symbol",
+            )
+        )
 
     count = re.search(r"\b(\d+)\s+PLCS\b", normalized)
     if count:
-        return [_record("count", normalized, int(count.group(1)), unit="count")]
+        records.append(_record("count", normalized, int(count.group(1)), unit="count"))
 
     tolerance = re.search(rf"({_NUMBER})\s*±\s*({_NUMBER})", normalized)
     if tolerance:
-        return [
+        records.append(
             _record(
                 "linear",
                 normalized,
@@ -82,8 +118,8 @@ def parse_dimension_text(text: str) -> list[dict[str, Any]]:
                 tolerance=float(tolerance.group(2)),
                 unit="mm",
             )
-        ]
+        )
 
-    if re.fullmatch(rf"{_NUMBER}", normalized):
+    if not records and re.fullmatch(rf"{_NUMBER}", normalized):
         return [_record("linear", normalized, float(normalized), unit="mm")]
-    return []
+    return records

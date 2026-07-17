@@ -203,6 +203,18 @@ class PlanExecutor:
                     _skip_refresh=True,
                 )
             )
+        if kind == "text":
+            return finish(
+                adapter.draw_text(
+                    _coord(c["position"]),
+                    entity.text_override,
+                    float(d["height"]),
+                    float(d.get("rotation", 0.0)),
+                    entity.layer,
+                    "white",
+                    _skip_refresh=True,
+                )
+            )
         if kind == "rectangle":
             return finish(
                 adapter.draw_rectangle(

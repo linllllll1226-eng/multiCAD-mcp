@@ -41,13 +41,20 @@ def read_entity_state(entity: Any) -> dict[str, Any]:
         "radius": "Radius",
         "length": "Length",
         "measurement": "Measurement",
+        "text_height": "TextHeight",
         "text_override": "TextOverride",
         "text_position": "TextPosition",
+        "position": "InsertionPoint",
+        "text": "TextString",
         "coordinates": "Coordinates",
     }.items():
         value = _safe_get(entity, prop)
         if value is not None:
             state[output] = _serializable(value)
+    if "text_height" not in state and "text" in str(state.get("object_type", "")).lower():
+        height = _safe_get(entity, "Height")
+        if height is not None:
+            state["text_height"] = _serializable(height)
     if "radius" in state:
         state["diameter"] = 2.0 * float(state["radius"])
     coordinates = state.get("coordinates")
@@ -70,12 +77,16 @@ def read_entity_state(entity: Any) -> dict[str, Any]:
 def _expected_object_type(entity_type: str) -> str | list[str]:
     return {
         "line": "AcDbLine",
+        "text": "AcDbText",
         "rectangle": ["AcDbPolyline", "AcDb2dPolyline"],
         "polyline": ["AcDbPolyline", "AcDb2dPolyline"],
         "circle": "AcDbCircle",
         "arc": "AcDbArc",
         "aligned_dimension": "AcDbAlignedDimension",
-        "linear_dimension": "AcDbRotatedDimension",
+        # The guarded executor currently routes both linear and aligned
+        # dimensions through adapter.add_dimension(), which may return an
+        # AcDbAlignedDimension depending on the CAD COM implementation.
+        "linear_dimension": ["AcDbRotatedDimension", "AcDbAlignedDimension"],
         "diametric_dimension": "AcDbDiametricDimension",
         "radial_dimension": "AcDbRadialDimension",
     }.get(entity_type.lower(), entity_type)
@@ -85,9 +96,20 @@ def _numeric_error(target: Any, actual: Any) -> float | None:
     if isinstance(target, (int, float)) and isinstance(actual, (int, float)):
         return abs(float(target) - float(actual))
     if isinstance(target, (list, tuple)) and isinstance(actual, (list, tuple)):
-        if len(target) != len(actual):
-            return math.inf
-        return max(abs(float(a) - float(b)) for a, b in zip(target, actual))
+        target_values = [float(value) for value in target]
+        actual_values = [float(value) for value in actual]
+        if len(target_values) != len(actual_values):
+            # Drawing plans commonly use 2D points while AutoCAD COM returns
+            # the same WCS point as XYZ. Treat an omitted zero elevation as
+            # equivalent instead of reporting an infinite error.
+            if {len(target_values), len(actual_values)} == {2, 3}:
+                if len(target_values) == 2:
+                    target_values.append(0.0)
+                if len(actual_values) == 2:
+                    actual_values.append(0.0)
+            else:
+                return math.inf
+        return max(abs(a - b) for a, b in zip(target_values, actual_values))
     return None
 
 
@@ -146,6 +168,12 @@ class PostExecutionVerifier:
             checks.update(start=target.coordinates["start"], end=target.coordinates["end"])
             a, b = target.coordinates["start"], target.coordinates["end"]
             checks["length"] = math.dist(a[:2], b[:2])
+        elif kind == "text":
+            checks.update(
+                position=target.coordinates["position"],
+                text=target.text_override,
+                text_height=target.dimensions["height"],
+            )
         elif kind == "rectangle":
             checks["closed"] = True
             if "width" in target.dimensions:

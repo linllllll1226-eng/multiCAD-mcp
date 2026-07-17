@@ -233,6 +233,7 @@ class PlanValidator:
     ) -> None:
         requirements = {
             "line": ("start", "end"),
+            "text": ("position",),
             "rectangle": ("corner1", "corner2"),
             "circle": ("center",),
             "arc": ("center",),
@@ -272,6 +273,16 @@ class PlanValidator:
                         f"Missing or invalid coordinate: {name}",
                         index,
                     )
+                )
+
+        if kind == "text":
+            if not entity.text_override.strip():
+                report.errors.append(
+                    ValidationIssue("text_missing", "Text content must not be empty", index)
+                )
+            if entity.dimensions.get("height", 0) <= 0:
+                report.errors.append(
+                    ValidationIssue("text_height_invalid", "Text height must be positive", index)
                 )
 
         if kind == "circle" and entity.dimensions.get("radius", 0) <= 0:

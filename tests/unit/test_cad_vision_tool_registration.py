@@ -20,7 +20,11 @@ class FakeMCP:
         return decorator
 
 
-def test_registers_two_read_only_tools() -> None:
+def test_registers_three_read_only_tools() -> None:
     mcp = FakeMCP()
     register_vision_tools(mcp)
-    assert set(mcp.tools) == {"cad_vision_capabilities", "cad_analyze_source"}
+    assert set(mcp.tools) == {
+        "cad_vision_capabilities",
+        "cad_analyze_source",
+        "cad_capture_live_window",
+    }
