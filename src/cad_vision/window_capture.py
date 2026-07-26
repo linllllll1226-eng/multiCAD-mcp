@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import logging
 import os
 import time
 from dataclasses import dataclass
@@ -16,6 +17,8 @@ import win32gui
 import win32process
 import win32ui
 from PIL import Image, ImageGrab, ImageStat
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -214,7 +217,7 @@ def _print_window(hwnd: int, width: int, height: int) -> Image.Image:
         try:
             win32gui.DeleteObject(bitmap.GetHandle())
         except Exception:
-            pass
+            logger.debug("Failed to release the temporary capture bitmap", exc_info=True)
         memory_dc.DeleteDC()
         source_dc.DeleteDC()
         win32gui.ReleaseDC(hwnd, window_dc)
@@ -263,13 +266,17 @@ def _activate_foreground_window(hwnd: int) -> tuple[int, bool]:
         win32gui.BringWindowToTop(hwnd)
         win32gui.SetForegroundWindow(hwnd)
     except Exception:
-        pass
+        logger.debug("Failed to bring the CAD window to the foreground", exc_info=True)
     finally:
         for thread_id in reversed(attached_threads):
             try:
                 ctypes.windll.user32.AttachThreadInput(current_thread, thread_id, False)
             except Exception:
-                pass
+                logger.debug(
+                    "Failed to detach foreground thread input for thread %s",
+                    thread_id,
+                    exc_info=True,
+                )
     time.sleep(0.25)
     return previous, int(win32gui.GetForegroundWindow() or 0) == int(hwnd)
 
@@ -299,7 +306,11 @@ def _restore_foreground_window(previous: int, target: int) -> bool:
             try:
                 ctypes.windll.user32.AttachThreadInput(current_thread, previous_thread, False)
             except Exception:
-                pass
+                logger.debug(
+                    "Failed to detach restored foreground thread input for thread %s",
+                    previous_thread,
+                    exc_info=True,
+                )
 
 
 def _wait_for_valid_window_rect(
