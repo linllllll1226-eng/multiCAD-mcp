@@ -22,10 +22,12 @@ def _coord(value: Any) -> tuple[float, float, float]:
 
 
 def _set_if_supported(entity: Any, name: str, value: Any) -> None:
+    """Set an optional CAD property while surfacing setter failures."""
     try:
-        setattr(entity, name, value)
-    except Exception:
-        pass
+        getattr(entity, name)
+    except AttributeError:
+        return
+    setattr(entity, name, value)
 
 
 @contextmanager
@@ -81,6 +83,8 @@ class PlanExecutor:
         document = adapter._get_document("cad_execute_plan")
         identity = document_identity(document)
         rolled_back = False
+        execution_error: str | None = None
+        rollback_diagnostics = self._empty_rollback_diagnostics()
         with undo_group(adapter):
             for index, entity in enumerate(plan.entities):
                 handle: str | None = None
@@ -88,9 +92,12 @@ class PlanExecutor:
                     handle = self._execute_entity(adapter, entity)
                     owned = entity.operation == "create"
                     metadata: dict[str, Any] = {}
-                    cad_object = document.HandleToObject(handle)
+                    # The CAD API has completed creation at this point. Own the
+                    # handle before any lookup or post-create work can fail.
                     if owned:
                         created_handles.append(handle)
+                    cad_object = document.HandleToObject(handle)
+                    self._finalize_entity(entity, cad_object)
                     if task_id and owned:
                         if execution_result_id is None:
                             raise ValueError("execution_result_id is required for task provenance")
@@ -135,10 +142,12 @@ class PlanExecutor:
                         }
                     )
                 except Exception as exc:
-                    results.append({"index": index, "success": False, "error": str(exc)})
-                    if handle and entity.operation == "create":
-                        created_handles.append(handle)
-                    rolled_back = self._rollback_created(document, created_handles)
+                    execution_error = str(exc)
+                    results.append({"index": index, "success": False, "error": execution_error})
+                    rollback_diagnostics = self._rollback_created_with_diagnostics(
+                        document, created_handles
+                    )
+                    rolled_back = bool(rollback_diagnostics["fully_rolled_back"])
                     break
 
         try:
@@ -160,19 +169,70 @@ class PlanExecutor:
             "task_id": task_id,
             "entity_records": entity_records if success else [],
             "rolled_back": rolled_back,
+            "execution_error": execution_error,
+            "rollback_diagnostics": rollback_diagnostics,
             "undo_group_requested": True,
+        }
+
+    @staticmethod
+    def _empty_rollback_diagnostics() -> dict[str, Any]:
+        """Return the stable shape used when no rollback was attempted."""
+        return {
+            "attempted": [],
+            "details": [],
+            "succeeded": [],
+            "failed": [],
+            "fully_rolled_back": False,
+        }
+
+    @staticmethod
+    def _rollback_created_with_diagnostics(document: Any, handles: list[str]) -> dict[str, Any]:
+        """Delete owned handles and retain lookup/delete diagnostics per handle."""
+        unique_handles = list(dict.fromkeys(handles))
+        details: list[dict[str, Any]] = []
+        succeeded: list[str] = []
+        failed: list[dict[str, Any]] = []
+        for handle in reversed(unique_handles):
+            try:
+                cad_object = document.HandleToObject(handle)
+            except Exception as exc:
+                detail = {
+                    "handle": handle,
+                    "status": "failed",
+                    "stage": "lookup",
+                    "error": str(exc),
+                }
+                details.append(detail)
+                failed.append(detail)
+                continue
+            try:
+                cad_object.Delete()
+            except Exception as exc:
+                detail = {
+                    "handle": handle,
+                    "status": "failed",
+                    "stage": "delete",
+                    "error": str(exc),
+                }
+                details.append(detail)
+                failed.append(detail)
+                continue
+            details.append({"handle": handle, "status": "deleted"})
+            succeeded.append(handle)
+        return {
+            "attempted": unique_handles,
+            "details": details,
+            "succeeded": succeeded,
+            "failed": failed,
+            "fully_rolled_back": not failed,
         }
 
     @staticmethod
     def _rollback_created(document: Any, handles: list[str]) -> bool:
         """Delete only objects newly created by the failed execution attempt."""
-        rollback_ok = True
-        for handle in reversed(list(dict.fromkeys(handles))):
-            try:
-                document.HandleToObject(handle).Delete()
-            except Exception:
-                rollback_ok = False
-        return rollback_ok
+        return bool(
+            PlanExecutor._rollback_created_with_diagnostics(document, handles)["fully_rolled_back"]
+        )
 
     def _execute_entity(self, adapter: Any, entity: EntityPlan) -> str:
         if entity.operation == "layout_only":
@@ -187,89 +247,84 @@ class PlanExecutor:
         d = entity.dimensions
         common = (entity.layer, "white", 25)
 
-        def finish(handle: str) -> str:
-            if entity.linetype and entity.linetype.lower() != "bylayer":
-                document = adapter._get_document("cad_execute_plan_linetype")
-                cad_object = document.HandleToObject(handle)
-                cad_object.Linetype = entity.linetype
-            return handle
-
         if kind == "line":
-            return finish(
-                adapter.draw_line(
-                    _coord(c["start"]),
-                    _coord(c["end"]),
-                    *common,
-                    _skip_refresh=True,
-                )
+            return adapter.draw_line(
+                _coord(c["start"]),
+                _coord(c["end"]),
+                *common,
+                _skip_refresh=True,
             )
         if kind == "text":
-            return finish(
-                adapter.draw_text(
-                    _coord(c["position"]),
-                    entity.text_override,
-                    float(d["height"]),
-                    float(d.get("rotation", 0.0)),
-                    entity.layer,
-                    "white",
-                    _skip_refresh=True,
-                )
+            return adapter.draw_text(
+                _coord(c["position"]),
+                entity.text_override,
+                float(d["height"]),
+                float(d.get("rotation", 0.0)),
+                entity.layer,
+                "white",
+                _skip_refresh=True,
             )
         if kind == "rectangle":
-            return finish(
-                adapter.draw_rectangle(
-                    _coord(c["corner1"]),
-                    _coord(c["corner2"]),
-                    *common,
-                    _skip_refresh=True,
-                )
+            return adapter.draw_rectangle(
+                _coord(c["corner1"]),
+                _coord(c["corner2"]),
+                *common,
+                _skip_refresh=True,
             )
         if kind == "circle":
-            return finish(
-                adapter.draw_circle(
-                    _coord(c["center"]),
-                    float(d["radius"]),
-                    *common,
-                    _skip_refresh=True,
-                )
+            return adapter.draw_circle(
+                _coord(c["center"]),
+                float(d["radius"]),
+                *common,
+                _skip_refresh=True,
             )
         if kind == "arc":
-            return finish(
-                adapter.draw_arc(
-                    _coord(c["center"]),
-                    float(d["radius"]),
-                    float(d["start_angle"]),
-                    float(d["end_angle"]),
-                    *common,
-                    _skip_refresh=True,
-                )
+            return adapter.draw_arc(
+                _coord(c["center"]),
+                float(d["radius"]),
+                float(d["start_angle"]),
+                float(d["end_angle"]),
+                *common,
+                _skip_refresh=True,
             )
         if kind == "polyline":
-            return finish(
-                adapter.draw_polyline(
-                    [_coord(point) for point in c["points"]],
-                    bool(d.get("closed", False)),
-                    *common,
-                    _skip_refresh=True,
-                )
+            return adapter.draw_polyline(
+                [_coord(point) for point in c["points"]],
+                bool(d.get("closed", False)),
+                *common,
+                _skip_refresh=True,
             )
         if kind in {"aligned_dimension", "linear_dimension"}:
-            return finish(
-                adapter.add_dimension(
-                    _coord(c["start"]),
-                    _coord(c["end"]),
-                    None,
-                    entity.layer,
-                    "white",
-                    float(d.get("offset", 10.0)),
-                    _skip_refresh=True,
-                )
+            return adapter.add_dimension(
+                _coord(c["start"]),
+                _coord(c["end"]),
+                None,
+                entity.layer,
+                "white",
+                float(d.get("offset", 10.0)),
+                _skip_refresh=True,
             )
         if kind == "diametric_dimension":
             return self._native_dimension(adapter, entity, radial=False)
         if kind == "radial_dimension":
             return self._native_dimension(adapter, entity, radial=True)
         raise ValueError(f"Unsupported execution entity type: {kind}")
+
+    @staticmethod
+    def _finalize_entity(entity: EntityPlan, cad_object: Any) -> None:
+        """Apply post-create properties after the handle is owned for rollback."""
+        if entity.operation != "create":
+            return
+        kind = entity.entity_type.lower()
+        if kind in {"diametric_dimension", "radial_dimension"}:
+            cad_object.Layer = entity.layer
+            _set_if_supported(cad_object, "Linetype", entity.linetype)
+            _set_if_supported(cad_object, "TextOverride", "")
+            _set_if_supported(cad_object, "TextFill", False)
+            _set_if_supported(cad_object, "UseBackgroundColor", False)
+            return
+        if entity.linetype and entity.linetype.lower() != "bylayer":
+            cad_object.Linetype = entity.linetype
 
     def _native_dimension(self, adapter: Any, entity: EntityPlan, *, radial: bool) -> str:
         document = adapter._get_document("cad_execute_plan_dimension")
@@ -287,11 +342,6 @@ class PlanExecutor:
                 adapter._to_variant_array(_coord(c["far_chord_point"])),
                 leader_length,
             )
-        dimension.Layer = entity.layer
-        _set_if_supported(dimension, "Linetype", entity.linetype)
-        _set_if_supported(dimension, "TextOverride", "")
-        _set_if_supported(dimension, "TextFill", False)
-        _set_if_supported(dimension, "UseBackgroundColor", False)
         return str(dimension.Handle)
 
     @staticmethod

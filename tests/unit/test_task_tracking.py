@@ -21,7 +21,10 @@ from cad_memory.task_manager import (
     _geometry_signature,
     _geometry_values_equal,
 )
-from mcp_tools.tools.validation import _rollback_task_handles
+from mcp_tools.tools.validation import (
+    _rollback_task_handles,
+    _rollback_task_handles_with_diagnostics,
+)
 
 
 class FakeLayer:
@@ -657,6 +660,48 @@ def test_database_failure_restores_cad_layer_and_xdata(tmp_path):
     assert store.get_ai_task("task-a")["status"] == "verified"
 
 
+def test_commit_restore_failure_is_reported_with_original_database_error(tmp_path):
+    """A failed commit must expose both its original and restoration failures."""
+    entity = FakeEntity(
+        "A1",
+        "AI_PREVIEW_OUTLINE",
+        fail_target="AI_PREVIEW_OUTLINE",
+    )
+    adapter = FakeAdapter(FakeDocument([entity]))
+    store = FailingTaskStore(tmp_path / "memory.db")
+    _seed_task(store, adapter, "task-a", entity)
+
+    with pytest.raises(RuntimeError) as error:
+        TaskTrackingManager(store).commit_preview_task(adapter, "task-a", confirmed=True)
+
+    message = str(error.value)
+    assert "simulated database failure" in message
+    assert "commit restoration failed" in message
+    assert "refused layer AI_PREVIEW_OUTLINE" in message
+    assert entity.Layer == "OUTLINE"
+
+
+def test_revert_restore_failure_is_reported_with_original_database_error(tmp_path):
+    """Revert restoration failures must not be silently swallowed."""
+    entity = FakeEntity(
+        "A1",
+        "AI_PREVIEW_OUTLINE",
+        fail_target="AI_PREVIEW_OUTLINE",
+    )
+    adapter = FakeAdapter(FakeDocument([entity]))
+    store = FailingTaskStore(tmp_path / "memory.db")
+    _seed_task(store, adapter, "task-a", entity)
+
+    with pytest.raises(RuntimeError) as error:
+        TaskTrackingManager(store).revert_task(adapter, "task-a", confirmed=True)
+
+    message = str(error.value)
+    assert "simulated database failure" in message
+    assert "revert restoration failed" in message
+    assert "refused layer AI_PREVIEW_OUTLINE" in message
+    assert entity.Layer == REVERT_LAYER
+
+
 def test_database_reopen_preserves_task_and_entity_metadata(tmp_path):
     path = tmp_path / "memory.db"
     entity = FakeEntity("A1", "AI_PREVIEW_OUTLINE")
@@ -678,4 +723,20 @@ def test_persistence_failure_rollback_deletes_only_proven_task_objects():
     result = _rollback_task_handles(adapter, "task-a", ["A1", "USER"])
     assert result is False
     assert owned.deleted is True
+    assert user.deleted is False
+
+
+def test_persistence_failure_rollback_reports_non_owned_handles():
+    """Persistence rollback diagnostics must explain ownership failures."""
+    owned = FakeEntity("A1", "AI_PREVIEW_OUTLINE")
+    user = FakeEntity("USER", "OUTLINE")
+    adapter = FakeAdapter(FakeDocument([owned, user]))
+    write_entity_provenance(adapter, adapter.document, owned, _metadata("task-a"))
+
+    result = _rollback_task_handles_with_diagnostics(adapter, "task-a", ["A1", "USER"])
+
+    assert result["fully_rolled_back"] is False
+    assert result["succeeded"] == ["A1"]
+    assert result["failed"][0]["handle"] == "USER"
+    assert result["failed"][0]["stage"] == "ownership"
     assert user.deleted is False

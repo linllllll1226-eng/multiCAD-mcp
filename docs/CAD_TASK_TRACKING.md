@@ -73,6 +73,12 @@ requires `allow_committed=true` after the user acknowledges that it is committed
 ## Failure behavior
 
 - CAD layer and XData edits are restored on operation failure.
+- A created handle is owned before post-create properties or provenance are
+  written; failed execution responses preserve the original error and include
+  per-handle `rollback_diagnostics`. `rolled_back` is true only when every
+  rollback lookup and delete succeeds.
+- Commit/revert restoration failures are reported together with the original
+  operation error instead of being silently discarded.
 - Entity-row and task-status database updates use one SQLite transaction.
 - A task with missing or mismatched XData is blocked.
 - Generic Undo and legacy delete/modify tools are never used as a fallback.
