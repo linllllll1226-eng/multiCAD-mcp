@@ -1,5 +1,7 @@
 """Unit tests for actual-object verification without AutoCAD."""
 
+import math
+
 from cad_memory.models import DrawingPlan
 from cad_memory.verifier import PostExecutionVerifier, read_entity_state
 
@@ -23,6 +25,14 @@ class FakeDimension:
     TextFill = False
 
 
+class FakeDiametricDimension(FakeDimension):
+    """Diametric dimension exposing both defining chord points."""
+
+    Measurement = 10.0
+    ChordPoint = (0.0, 0.0, 0.0)
+    FarChordPoint = (10.0, 0.0, 0.0)
+
+
 class FakeAlignedDimension:
     """Aligned dimension returned for a guarded linear-dimension request."""
 
@@ -33,6 +43,14 @@ class FakeAlignedDimension:
     Measurement = 60.0
     TextOverride = ""
     TextFill = False
+    ExtLine1Point = (0.0, 0.0, 0.0)
+    ExtLine2Point = (60.0, 0.0, 0.0)
+
+
+class FakeMovedAlignedDimension(FakeAlignedDimension):
+    """Aligned dimension whose first defining point was moved."""
+
+    ExtLine1Point = (1.0, 0.0, 0.0)
 
 
 class FakeRectangle:
@@ -60,6 +78,58 @@ class FakeRectangle:
         0.0,
         0.0,
     )
+
+
+class FakeShiftedRectangle(FakeRectangle):
+    """Same-size rectangle translated away from the planned position."""
+
+    Coordinates = (
+        100.0,
+        100.0,
+        0.0,
+        110.0,
+        100.0,
+        0.0,
+        110.0,
+        105.0,
+        0.0,
+        100.0,
+        105.0,
+        0.0,
+        100.0,
+        100.0,
+        0.0,
+    )
+
+
+class FakePolyline:
+    """Lightweight polyline double with flattened 2D coordinates."""
+
+    Handle = "P1"
+    ObjectName = "AcDbPolyline"
+    Layer = "AI_PREVIEW_OUTLINE"
+    Linetype = "ByLayer"
+
+    def __init__(self, coordinates, closed=False):
+        """Store the actual coordinates and closure state."""
+        self.Coordinates = coordinates
+        self.Closed = closed
+
+
+class FakeArc:
+    """Arc double exposing AutoCAD's radians-based angle properties."""
+
+    Handle = "A2"
+    ObjectName = "AcDbArc"
+    Layer = "AI_PREVIEW_OUTLINE"
+    Linetype = "ByLayer"
+    Center = (0.0, 0.0, 0.0)
+    Radius = 5.0
+
+    def __init__(self, start_angle, end_angle):
+        """Store angles in the same radians representation as AutoCAD COM."""
+        self.StartAngle = math.radians(start_angle)
+        self.EndAngle = math.radians(end_angle)
 
 
 class FakeLine:
@@ -236,6 +306,184 @@ def test_actual_rectangle_reports_width_height_and_closed_state():
     assert rows["width"]["actual"] == 1000
     assert rows["height"]["actual"] == 600
     assert rows["closed"]["actual"] is True
+
+
+def test_shifted_same_size_rectangle_fails_vertex_verification():
+    """A rectangle with matching dimensions but a different position must fail."""
+    plan = DrawingPlan.model_validate(
+        {
+            "task_name": "shifted-rectangle",
+            "unit": "mm",
+            "user_confirmed": True,
+            "existing_layers": ["AI_PREVIEW_OUTLINE"],
+            "entities": [
+                {
+                    "entity_type": "rectangle",
+                    "coordinates": {"corner1": [0, 0], "corner2": [10, 5]},
+                    "dimensions": {"width": 10, "height": 5},
+                    "layer": "AI_PREVIEW_OUTLINE",
+                    "linetype": "ByLayer",
+                    "dimension_source": "explicit_dimension",
+                    "confidence": 1,
+                }
+            ],
+        }
+    )
+    result = PostExecutionVerifier().verify(
+        FakeAdapter({"R1": FakeShiftedRectangle()}), plan, ["R1"]
+    )
+    assert not result["passed"]
+    row = next(item for item in result["rows"] if item["property"] == "vertices")
+    assert row["actual"][0] == [100.0, 100.0, 0.0]
+    assert any("vertices" in error and "expected" in error for error in result["errors"])
+
+
+def test_polyline_vertex_change_fails_ordered_geometry_verification():
+    """A changed vertex must fail even when the polyline has the same count."""
+    plan = DrawingPlan.model_validate(
+        {
+            "task_name": "polyline",
+            "unit": "mm",
+            "user_confirmed": True,
+            "existing_layers": ["AI_PREVIEW_OUTLINE"],
+            "entities": [
+                {
+                    "entity_type": "polyline",
+                    "coordinates": {"points": [[0, 0], [10, 0], [10, 5]]},
+                    "dimensions": {"closed": False},
+                    "layer": "AI_PREVIEW_OUTLINE",
+                    "linetype": "ByLayer",
+                    "dimension_source": "explicit_dimension",
+                    "confidence": 1,
+                }
+            ],
+        }
+    )
+    actual = FakePolyline((0.0, 0.0, 10.0, 0.0, 11.0, 5.0))
+    result = PostExecutionVerifier().verify(FakeAdapter({"P1": actual}), plan, ["P1"])
+    assert not result["passed"]
+    row = next(item for item in result["rows"] if item["property"] == "vertices")
+    assert row["actual"][-1] == [11.0, 5.0, 0.0]
+
+
+def test_arc_sweep_change_fails_normalized_angle_verification():
+    """Arc start/end angles must be compared rather than only center/radius."""
+    plan = DrawingPlan.model_validate(
+        {
+            "task_name": "arc",
+            "unit": "mm",
+            "user_confirmed": True,
+            "existing_layers": ["AI_PREVIEW_OUTLINE"],
+            "entities": [
+                {
+                    "entity_type": "arc",
+                    "coordinates": {"center": [0, 0]},
+                    "dimensions": {"radius": 5, "start_angle": 0, "end_angle": 90},
+                    "layer": "AI_PREVIEW_OUTLINE",
+                    "linetype": "ByLayer",
+                    "dimension_source": "explicit_dimension",
+                    "confidence": 1,
+                }
+            ],
+        }
+    )
+    result = PostExecutionVerifier().verify(
+        FakeAdapter({"A2": FakeArc(0, 180)}), plan, ["A2"]
+    )
+    assert not result["passed"]
+    row = next(item for item in result["rows"] if item["property"] == "end_angle")
+    assert row["target"] == 90.0
+    assert row["actual"] == 180.0
+    assert row["error"] == 90.0
+
+
+def test_arc_angle_wrap_is_treated_as_equivalent():
+    """Equivalent angles beyond one full turn must pass normalization."""
+    plan = DrawingPlan.model_validate(
+        {
+            "task_name": "wrapped-arc",
+            "unit": "mm",
+            "user_confirmed": True,
+            "existing_layers": ["AI_PREVIEW_OUTLINE"],
+            "entities": [
+                {
+                    "entity_type": "arc",
+                    "coordinates": {"center": [0, 0]},
+                    "dimensions": {"radius": 5, "start_angle": 0, "end_angle": 90},
+                    "layer": "AI_PREVIEW_OUTLINE",
+                    "linetype": "ByLayer",
+                    "dimension_source": "explicit_dimension",
+                    "confidence": 1,
+                }
+            ],
+        }
+    )
+    result = PostExecutionVerifier().verify(
+        FakeAdapter({"A2": FakeArc(360, 450)}), plan, ["A2"]
+    )
+    assert result["passed"], result
+
+
+def test_dimension_definition_point_change_fails_verification():
+    """Moving an aligned dimension extension point must fail verification."""
+    plan = DrawingPlan.model_validate(
+        {
+            "task_name": "linear-dimension",
+            "unit": "mm",
+            "user_confirmed": True,
+            "existing_layers": ["AI_PREVIEW_DIM"],
+            "entities": [
+                {
+                    "entity_type": "linear_dimension",
+                    "coordinates": {"start": [0, 0], "end": [60, 0]},
+                    "dimensions": {"measurement": 60, "offset": 10},
+                    "layer": "AI_PREVIEW_DIM",
+                    "linetype": "ByLayer",
+                    "dimension_source": "explicit_dimension",
+                    "confidence": 1,
+                }
+            ],
+        }
+    )
+    result = PostExecutionVerifier().verify(
+        FakeAdapter({"D2": FakeMovedAlignedDimension()}), plan, ["D2"]
+    )
+    assert not result["passed"]
+    row = next(item for item in result["rows"] if item["property"] == "ext_line1_point")
+    assert row["target"] == [0, 0]
+    assert row["actual"] == [1.0, 0.0, 0.0]
+
+
+def test_diametric_dimension_compares_both_chord_points():
+    """Diametric dimensions must verify both defining chord endpoints."""
+    plan = DrawingPlan.model_validate(
+        {
+            "task_name": "diameter",
+            "unit": "mm",
+            "user_confirmed": True,
+            "existing_layers": ["AI_PREVIEW_DIM"],
+            "entities": [
+                {
+                    "entity_type": "diametric_dimension",
+                    "coordinates": {
+                        "chord_point": [0, 0],
+                        "far_chord_point": [10, 0],
+                    },
+                    "dimensions": {"measurement": 10},
+                    "layer": "AI_PREVIEW_DIM",
+                    "linetype": "ByLayer",
+                    "dimension_source": "explicit_dimension",
+                    "confidence": 1,
+                }
+            ],
+        }
+    )
+    result = PostExecutionVerifier().verify(
+        FakeAdapter({"D1": FakeDiametricDimension()}), plan, ["D1"]
+    )
+    assert result["passed"], result
+    properties = {row["property"] for row in result["rows"]}
+    assert {"chord_point", "far_chord_point"} <= properties
 
 
 def test_centerline_verification_checks_effective_layer_linetype():
