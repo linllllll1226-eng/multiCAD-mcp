@@ -36,19 +36,65 @@ def _store() -> SQLiteMemoryStore:
 
 def _rollback_task_handles(adapter: Any, task_id: str, handles: list[str]) -> bool:
     """Delete only newly created handles whose XData proves task ownership."""
+    return bool(
+        _rollback_task_handles_with_diagnostics(adapter, task_id, handles)["fully_rolled_back"]
+    )
+
+
+def _rollback_task_handles_with_diagnostics(
+    adapter: Any, task_id: str, handles: list[str]
+) -> dict[str, Any]:
+    """Delete task-owned handles and retain lookup, ownership, and delete failures."""
     document = adapter._get_document("cad_execute_plan_persistence_rollback")
-    rollback_ok = True
-    for handle in reversed(list(dict.fromkeys(handles))):
+    unique_handles = list(dict.fromkeys(handles))
+    details: list[dict[str, Any]] = []
+    succeeded: list[str] = []
+    failed: list[dict[str, Any]] = []
+    for handle in reversed(unique_handles):
         try:
             entity = document.HandleToObject(handle)
-            metadata = read_entity_provenance(entity)
-            if not metadata or metadata.get("task_id") != task_id:
-                rollback_ok = False
-                continue
+        except Exception as exc:
+            detail = {
+                "handle": handle,
+                "status": "failed",
+                "stage": "lookup",
+                "error": str(exc),
+            }
+            details.append(detail)
+            failed.append(detail)
+            continue
+        metadata = read_entity_provenance(entity)
+        if not metadata or metadata.get("task_id") != task_id:
+            detail = {
+                "handle": handle,
+                "status": "failed",
+                "stage": "ownership",
+                "error": f"handle is not proven to belong to task {task_id}",
+            }
+            details.append(detail)
+            failed.append(detail)
+            continue
+        try:
             entity.Delete()
-        except Exception:
-            rollback_ok = False
-    return rollback_ok
+        except Exception as exc:
+            detail = {
+                "handle": handle,
+                "status": "failed",
+                "stage": "delete",
+                "error": str(exc),
+            }
+            details.append(detail)
+            failed.append(detail)
+            continue
+        details.append({"handle": handle, "status": "deleted"})
+        succeeded.append(handle)
+    return {
+        "attempted": unique_handles,
+        "details": details,
+        "succeeded": succeeded,
+        "failed": failed,
+        "fully_rolled_back": not failed,
+    }
 
 
 def register_validation_tools(mcp: Any) -> None:
@@ -131,6 +177,8 @@ def register_validation_tools(mcp: Any) -> None:
                     "handles": result.get("handles", []),
                     "results": result.get("results", []),
                     "rolled_back": result.get("rolled_back", False),
+                    "execution_error": result.get("execution_error"),
+                    "rollback_diagnostics": result.get("rollback_diagnostics", {}),
                 },
                 passed=bool(result.get("success")),
                 errors=errors,
@@ -146,14 +194,26 @@ def register_validation_tools(mcp: Any) -> None:
             result["plan_hash"] = receipt.plan_hash
         except Exception as exc:
             rolled_back = False
+            rollback_diagnostics = {
+                "attempted": [],
+                "details": [],
+                "succeeded": [],
+                "failed": [],
+                "fully_rolled_back": False,
+            }
             if result and result.get("handles"):
-                rolled_back = _rollback_task_handles(adapter, task_id, result["handles"])
+                rollback_diagnostics = _rollback_task_handles_with_diagnostics(
+                    adapter, task_id, result["handles"]
+                )
+                rolled_back = bool(rollback_diagnostics["fully_rolled_back"])
             store.update_execution_result(
                 pending["id"],
                 actual_data={
                     "task_id": task_id,
                     "status": "exception",
                     "rolled_back": rolled_back,
+                    "execution_error": str(exc),
+                    "rollback_diagnostics": rollback_diagnostics,
                 },
                 passed=False,
                 errors=[str(exc)],
