@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 from .models import DrawingPlan, EntityPlan
 from .provenance import (
@@ -88,14 +88,24 @@ class PlanExecutor:
         with undo_group(adapter):
             for index, entity in enumerate(plan.entities):
                 handle: str | None = None
+                owned = entity.operation == "create"
+
+                def register_created(created_handle: str) -> None:
+                    if owned and created_handle not in created_handles:
+                        created_handles.append(created_handle)
+
                 try:
-                    handle = self._execute_entity(adapter, entity)
-                    owned = entity.operation == "create"
+                    handle = self._execute_entity(
+                        adapter,
+                        entity,
+                        on_created=register_created if owned else None,
+                    )
                     metadata: dict[str, Any] = {}
-                    # The CAD API has completed creation at this point. Own the
-                    # handle before any lookup or post-create work can fail.
                     if owned:
-                        created_handles.append(handle)
+                        # Adapters without the guarded callback remain supported;
+                        # callback-aware adapters already registered this handle
+                        # immediately after the underlying CAD Add* call.
+                        register_created(handle)
                     cad_object = document.HandleToObject(handle)
                     self._finalize_entity(entity, cad_object)
                     if task_id and owned:
@@ -234,7 +244,13 @@ class PlanExecutor:
             PlanExecutor._rollback_created_with_diagnostics(document, handles)["fully_rolled_back"]
         )
 
-    def _execute_entity(self, adapter: Any, entity: EntityPlan) -> str:
+    def _execute_entity(
+        self,
+        adapter: Any,
+        entity: EntityPlan,
+        *,
+        on_created: Callable[[str], None] | None = None,
+    ) -> str:
         if entity.operation == "layout_only":
             return self._layout_dimension(adapter, entity)
         if entity.operation != "create":
@@ -246,6 +262,12 @@ class PlanExecutor:
         c = entity.coordinates
         d = entity.dimensions
         common = (entity.layer, "white", 25)
+        creation_kwargs = (
+            {"_on_created": on_created}
+            if on_created is not None
+            and bool(getattr(adapter, "supports_guarded_creation_callback", False))
+            else {}
+        )
 
         if kind == "line":
             return adapter.draw_line(
@@ -253,6 +275,7 @@ class PlanExecutor:
                 _coord(c["end"]),
                 *common,
                 _skip_refresh=True,
+                **creation_kwargs,
             )
         if kind == "text":
             return adapter.draw_text(
@@ -263,6 +286,7 @@ class PlanExecutor:
                 entity.layer,
                 "white",
                 _skip_refresh=True,
+                **creation_kwargs,
             )
         if kind == "rectangle":
             return adapter.draw_rectangle(
@@ -270,6 +294,7 @@ class PlanExecutor:
                 _coord(c["corner2"]),
                 *common,
                 _skip_refresh=True,
+                **creation_kwargs,
             )
         if kind == "circle":
             return adapter.draw_circle(
@@ -277,6 +302,7 @@ class PlanExecutor:
                 float(d["radius"]),
                 *common,
                 _skip_refresh=True,
+                **creation_kwargs,
             )
         if kind == "arc":
             return adapter.draw_arc(
@@ -286,6 +312,7 @@ class PlanExecutor:
                 float(d["end_angle"]),
                 *common,
                 _skip_refresh=True,
+                **creation_kwargs,
             )
         if kind == "polyline":
             return adapter.draw_polyline(
@@ -293,6 +320,7 @@ class PlanExecutor:
                 bool(d.get("closed", False)),
                 *common,
                 _skip_refresh=True,
+                **creation_kwargs,
             )
         if kind in {"aligned_dimension", "linear_dimension"}:
             return adapter.add_dimension(
@@ -303,11 +331,22 @@ class PlanExecutor:
                 "white",
                 float(d.get("offset", 10.0)),
                 _skip_refresh=True,
+                **creation_kwargs,
             )
         if kind == "diametric_dimension":
-            return self._native_dimension(adapter, entity, radial=False)
+            return self._native_dimension(
+                adapter,
+                entity,
+                radial=False,
+                on_created=on_created,
+            )
         if kind == "radial_dimension":
-            return self._native_dimension(adapter, entity, radial=True)
+            return self._native_dimension(
+                adapter,
+                entity,
+                radial=True,
+                on_created=on_created,
+            )
         raise ValueError(f"Unsupported execution entity type: {kind}")
 
     @staticmethod
@@ -326,7 +365,14 @@ class PlanExecutor:
         if entity.linetype and entity.linetype.lower() != "bylayer":
             cad_object.Linetype = entity.linetype
 
-    def _native_dimension(self, adapter: Any, entity: EntityPlan, *, radial: bool) -> str:
+    def _native_dimension(
+        self,
+        adapter: Any,
+        entity: EntityPlan,
+        *,
+        radial: bool,
+        on_created: Callable[[str], None] | None = None,
+    ) -> str:
         document = adapter._get_document("cad_execute_plan_dimension")
         c = entity.coordinates
         leader_length = float(entity.dimensions.get("leader_length", 10.0))
@@ -342,7 +388,10 @@ class PlanExecutor:
                 adapter._to_variant_array(_coord(c["far_chord_point"])),
                 leader_length,
             )
-        return str(dimension.Handle)
+        handle = str(dimension.Handle)
+        if on_created is not None:
+            on_created(handle)
+        return handle
 
     @staticmethod
     def _layout_dimension(adapter: Any, entity: EntityPlan) -> str:

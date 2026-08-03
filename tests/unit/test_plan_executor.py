@@ -1,5 +1,6 @@
 """Unit tests for guarded plan execution without AutoCAD."""
 
+from adapters.mixins.drawing_mixin import DrawingMixin
 from cad_memory.executor import PlanExecutor
 from cad_memory.models import DrawingPlan
 
@@ -157,6 +158,50 @@ class CreationAdapter:
         """Simulate a no-op view refresh."""
 
 
+class _CreationModelSpace:
+    """Create entities before the drawing mixin applies their properties."""
+
+    def __init__(self, document):
+        self.document = document
+
+    def AddLine(self, _start, _end):  # noqa: N802 - mirrors AutoCAD COM
+        handle = f"L{len(self.document.objects) + 1}"
+        entity = CreatedEntity(handle)
+        self.document.objects[handle] = entity
+        return entity
+
+
+class FailingDrawingMixinAdapter(DrawingMixin):
+    """Exercise the real adapter path when post-create property work fails."""
+
+    def __init__(self):
+        """Create a document whose property finalization always fails."""
+        self.document = CreationDocument()
+        self.document.ModelSpace = _CreationModelSpace(self.document)
+
+    def list_layers(self):
+        return ["AI_PREVIEW_OUTLINE"]
+
+    def _get_document(self, _operation):
+        return self.document
+
+    @staticmethod
+    def _to_variant_array(value):
+        return value
+
+    @staticmethod
+    def _apply_properties(_entity, _layer, _color, _lineweight=0):
+        raise RuntimeError("adapter property finalization failed")
+
+    @staticmethod
+    def _track_entity(_entity, _entity_type):
+        raise AssertionError("tracking must not run after property failure")
+
+    @staticmethod
+    def refresh_view():
+        return True
+
+
 def _line_plan(linetypes):
     """Build a confirmed line plan for executor failure tests."""
     return DrawingPlan.model_validate(
@@ -237,6 +282,25 @@ def test_linetype_failure_rolls_back_the_immediately_registered_handle():
     assert result["rolled_back"] is True
     assert adapter.created[0].deleted is True
     assert result["rollback_diagnostics"]["details"] == [{"handle": "L1", "status": "deleted"}]
+
+
+def test_adapter_property_failure_rolls_back_handle_registered_at_add_time():
+    """A mixin finalization failure must not strand the already-created CAD object."""
+    adapter = FailingDrawingMixinAdapter()
+    result = PlanExecutor().execute(adapter, _line_plan(["ByLayer"]))
+
+    assert result["success"] is False
+    assert result["execution_error"] == "adapter property finalization failed"
+    assert result["rolled_back"] is True
+    created = adapter.document.objects["L1"]
+    assert created.deleted is True
+    assert result["rollback_diagnostics"] == {
+        "attempted": ["L1"],
+        "details": [{"handle": "L1", "status": "deleted"}],
+        "succeeded": ["L1"],
+        "failed": [],
+        "fully_rolled_back": True,
+    }
 
 
 def test_provenance_failure_rolls_back_the_created_entity(monkeypatch):
