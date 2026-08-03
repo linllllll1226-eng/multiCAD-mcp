@@ -387,9 +387,7 @@ def test_arc_sweep_change_fails_normalized_angle_verification():
             ],
         }
     )
-    result = PostExecutionVerifier().verify(
-        FakeAdapter({"A2": FakeArc(0, 180)}), plan, ["A2"]
-    )
+    result = PostExecutionVerifier().verify(FakeAdapter({"A2": FakeArc(0, 180)}), plan, ["A2"])
     assert not result["passed"]
     row = next(item for item in result["rows"] if item["property"] == "end_angle")
     assert row["target"] == 90.0
@@ -418,9 +416,7 @@ def test_arc_angle_wrap_is_treated_as_equivalent():
             ],
         }
     )
-    result = PostExecutionVerifier().verify(
-        FakeAdapter({"A2": FakeArc(360, 450)}), plan, ["A2"]
-    )
+    result = PostExecutionVerifier().verify(FakeAdapter({"A2": FakeArc(360, 450)}), plan, ["A2"])
     assert result["passed"], result
 
 
