@@ -142,10 +142,15 @@ allow flags.
 7. Call `cad_verify_execution` with the same plan, handles, and `task_id`.
 8. Report the comparison rows: target, actual, error, and pass/fail.
 
-Validation covers missing coordinates or units, nonpositive dimensions, missing
-layers, circle/arc/dimension parameters, symmetry, concentricity, tangency, equal
-distance, uniform distribution (including three points at 120 degrees), dimension
-chains, uncertainty, and destructive intent.
+Validation uses an entity-specific dimension schema instead of treating every
+field as a positive number. Boolean polyline closure remains a boolean, while
+numeric fields are checked according to their entity semantics. The geometry gate
+rejects zero-length lines, zero-area rectangles, repeated or zero-length polyline
+segments, invalid arc sweeps, and coincident dimension defining points before a
+plan can receive an execution receipt. It also covers missing coordinates or
+units, missing layers, symmetry, concentricity, tangency, equal distance, uniform
+distribution (including three points at 120 degrees), dimension chains,
+uncertainty, and destructive intent.
 
 ## Dimension safeguards
 

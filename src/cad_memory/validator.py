@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import asdict, dataclass, field
-from typing import Any, Iterable
+from typing import Any, Iterable, Literal
 
 from .models import ConstraintSpec, DrawingPlan, EntityPlan
 from .receipts import SUPPORTED_PLAN_UNITS, normalize_unit
@@ -22,6 +22,58 @@ DIMENSION_TYPES = {
     "linear_dimension",
     "diametric_dimension",
     "radial_dimension",
+}
+GEOMETRY_TOLERANCE = 1e-9
+
+
+@dataclass(frozen=True)
+class DimensionField:
+    """Typed validation rule for one entity-specific dimension field."""
+
+    value_type: Literal["boolean", "finite", "positive", "angle"]
+    required: bool = False
+
+
+ENTITY_DIMENSION_SCHEMAS: dict[str, dict[str, DimensionField]] = {
+    "line": {},
+    "text": {
+        "height": DimensionField("positive", required=True),
+        "rotation": DimensionField("angle"),
+    },
+    "rectangle": {
+        "width": DimensionField("positive"),
+        "height": DimensionField("positive"),
+        "area": DimensionField("positive"),
+    },
+    "circle": {"radius": DimensionField("positive", required=True)},
+    "arc": {
+        "radius": DimensionField("positive", required=True),
+        "start_angle": DimensionField("angle", required=True),
+        "end_angle": DimensionField("angle", required=True),
+    },
+    "polyline": {"closed": DimensionField("boolean")},
+    "aligned_dimension": {
+        "measurement": DimensionField("positive"),
+        "offset": DimensionField("finite"),
+        "text_height": DimensionField("positive"),
+    },
+    "linear_dimension": {
+        "measurement": DimensionField("positive"),
+        "offset": DimensionField("finite"),
+        "text_height": DimensionField("positive"),
+    },
+    "diametric_dimension": {
+        "diameter": DimensionField("positive"),
+        "measurement": DimensionField("positive"),
+        "leader_length": DimensionField("positive"),
+        "text_height": DimensionField("positive"),
+    },
+    "radial_dimension": {
+        "radius": DimensionField("positive"),
+        "measurement": DimensionField("positive"),
+        "leader_length": DimensionField("positive"),
+        "text_height": DimensionField("positive"),
+    },
 }
 
 
@@ -53,20 +105,22 @@ class ValidationReport:
         }
 
 
-def _point(value: Any) -> tuple[float, float] | None:
-    if not isinstance(value, (list, tuple)) or len(value) < 2:
+def _point(value: Any) -> tuple[float, float, float] | None:
+    if not isinstance(value, (list, tuple)) or len(value) not in {2, 3}:
         return None
     try:
-        x, y = float(value[0]), float(value[1])
+        coordinates = tuple(float(item) for item in value)
     except (TypeError, ValueError):
         return None
-    if not math.isfinite(x) or not math.isfinite(y):
+    if not all(math.isfinite(item) for item in coordinates):
         return None
-    return x, y
+    if len(coordinates) == 2:
+        return coordinates[0], coordinates[1], 0.0
+    return coordinates[0], coordinates[1], coordinates[2]
 
 
-def _distance(a: tuple[float, float], b: tuple[float, float]) -> float:
-    return math.hypot(a[0] - b[0], a[1] - b[1])
+def _distance(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
+    return math.dist(a, b)
 
 
 class PlanValidator:
@@ -191,19 +245,7 @@ class PlanValidator:
                 ValidationIssue("target_missing", "The operation requires target_handles", index)
             )
 
-        for name, value in entity.dimensions.items():
-            if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
-                report.errors.append(
-                    ValidationIssue("dimension_invalid", f"Dimension {name} is not finite", index)
-                )
-            elif name not in {"start_angle", "end_angle", "angle"} and float(value) <= 0:
-                report.errors.append(
-                    ValidationIssue(
-                        "dimension_nonpositive",
-                        f"Dimension {name} must be positive",
-                        index,
-                    )
-                )
+        self._validate_dimensions(kind, entity, index, report)
 
         if entity.operation == "layout_only":
             if kind not in DIMENSION_TYPES:
@@ -275,40 +317,282 @@ class PlanValidator:
                     )
                 )
 
+        self._validate_entity_geometry(kind, entity, index, report)
+
         if kind == "text":
             if not entity.text_override.strip():
                 report.errors.append(
                     ValidationIssue("text_missing", "Text content must not be empty", index)
                 )
-            if entity.dimensions.get("height", 0) <= 0:
+            height = entity.dimensions.get("height")
+            if (
+                isinstance(height, bool)
+                or not isinstance(height, (int, float))
+                or not math.isfinite(float(height))
+                or float(height) <= 0
+            ):
                 report.errors.append(
                     ValidationIssue("text_height_invalid", "Text height must be positive", index)
                 )
 
-        if kind == "circle" and entity.dimensions.get("radius", 0) <= 0:
-            report.errors.append(
-                ValidationIssue("circle_radius_invalid", "Circle radius must be positive", index)
-            )
-        if kind == "arc":
-            if entity.dimensions.get("radius", 0) <= 0:
-                report.errors.append(
-                    ValidationIssue("arc_radius_invalid", "Arc radius must be positive", index)
-                )
-            start = entity.dimensions.get("start_angle")
-            end = entity.dimensions.get("end_angle")
+        if kind == "circle":
+            radius = entity.dimensions.get("radius")
             if (
-                start is None
-                or end is None
-                or start == end
-                or not (0 <= start < 360 and 0 <= end < 360)
+                isinstance(radius, bool)
+                or not isinstance(radius, (int, float))
+                or not math.isfinite(float(radius))
+                or float(radius) <= 0
             ):
                 report.errors.append(
                     ValidationIssue(
-                        "arc_angles_invalid",
-                        "Arc angles must be distinct values in [0, 360)",
+                        "circle_radius_invalid", "Circle radius must be positive", index
+                    )
+                )
+        if kind == "arc":
+            radius = entity.dimensions.get("radius")
+            if (
+                isinstance(radius, bool)
+                or not isinstance(radius, (int, float))
+                or not math.isfinite(float(radius))
+                or float(radius) <= 0
+            ):
+                report.errors.append(
+                    ValidationIssue("arc_radius_invalid", "Arc radius must be positive", index)
+                )
+
+    def _validate_dimensions(
+        self, kind: str, entity: EntityPlan, index: int, report: ValidationReport
+    ) -> None:
+        """Validate fields against the schema for this exact entity type."""
+        schema = ENTITY_DIMENSION_SCHEMAS.get(kind)
+        if schema is None:
+            return
+
+        for name, rule in schema.items():
+            if rule.required and name not in entity.dimensions:
+                report.errors.append(
+                    ValidationIssue(
+                        "dimension_missing",
+                        f"{kind} requires dimension {name}",
                         index,
                     )
                 )
+
+        for name, value in entity.dimensions.items():
+            rule = schema.get(name)
+            if rule is None:
+                report.errors.append(
+                    ValidationIssue(
+                        "dimension_field_unsupported",
+                        f"Dimension {name} is not valid for {kind}",
+                        index,
+                    )
+                )
+                continue
+            if rule.value_type == "boolean":
+                if type(value) is not bool:
+                    report.errors.append(
+                        ValidationIssue(
+                            "dimension_type_invalid",
+                            f"Dimension {name} must be boolean",
+                            index,
+                        )
+                    )
+                continue
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                report.errors.append(
+                    ValidationIssue(
+                        "dimension_type_invalid",
+                        f"Dimension {name} must be numeric",
+                        index,
+                    )
+                )
+                continue
+            numeric = float(value)
+            if not math.isfinite(numeric):
+                report.errors.append(
+                    ValidationIssue("dimension_invalid", f"Dimension {name} is not finite", index)
+                )
+            elif rule.value_type == "positive" and numeric <= 0:
+                report.errors.append(
+                    ValidationIssue(
+                        "dimension_nonpositive",
+                        f"Dimension {name} must be positive",
+                        index,
+                    )
+                )
+            elif rule.value_type == "angle" and not 0 <= numeric < 360:
+                report.errors.append(
+                    ValidationIssue(
+                        "dimension_angle_invalid",
+                        f"Dimension {name} must be in [0, 360)",
+                        index,
+                    )
+                )
+
+    def _validate_entity_geometry(
+        self, kind: str, entity: EntityPlan, index: int, report: ValidationReport
+    ) -> None:
+        """Reject entity-specific degenerate geometry before AutoCAD sees it."""
+        coordinates = entity.coordinates
+        if kind == "line":
+            self._reject_coincident_points(
+                coordinates.get("start"),
+                coordinates.get("end"),
+                "line_zero_length",
+                "Line start and end points must be distinct",
+                index,
+                report,
+            )
+        elif kind == "rectangle":
+            corner1 = _point(coordinates.get("corner1"))
+            corner2 = _point(coordinates.get("corner2"))
+            if corner1 is not None and corner2 is not None:
+                width = abs(corner2[0] - corner1[0])
+                height = abs(corner2[1] - corner1[1])
+                if width <= GEOMETRY_TOLERANCE:
+                    report.errors.append(
+                        ValidationIssue(
+                            "rectangle_width_nonpositive",
+                            "Rectangle width must be positive",
+                            index,
+                        )
+                    )
+                if height <= GEOMETRY_TOLERANCE:
+                    report.errors.append(
+                        ValidationIssue(
+                            "rectangle_height_nonpositive",
+                            "Rectangle height must be positive",
+                            index,
+                        )
+                    )
+                if width * height <= 0:
+                    report.errors.append(
+                        ValidationIssue(
+                            "rectangle_area_nonpositive",
+                            "Rectangle area must be positive",
+                            index,
+                        )
+                    )
+        elif kind == "polyline":
+            self._validate_polyline(entity, index, report)
+        elif kind == "arc":
+            start = entity.dimensions.get("start_angle")
+            end = entity.dimensions.get("end_angle")
+            if (
+                isinstance(start, bool)
+                or isinstance(end, bool)
+                or not isinstance(start, (int, float))
+                or not isinstance(end, (int, float))
+                or not math.isfinite(float(start))
+                or not math.isfinite(float(end))
+                or not 0 <= float(start) < 360
+                or not 0 <= float(end) < 360
+                or math.isclose(float(start), float(end), abs_tol=GEOMETRY_TOLERANCE)
+            ):
+                report.errors.append(
+                    ValidationIssue(
+                        "arc_sweep_invalid",
+                        "Arc requires a finite, non-zero sweep with angles in [0, 360)",
+                        index,
+                    )
+                )
+        elif kind in {"aligned_dimension", "linear_dimension"}:
+            self._reject_coincident_points(
+                coordinates.get("start"),
+                coordinates.get("end"),
+                "dimension_defining_points_coincident",
+                "Dimension start and end points must be distinct",
+                index,
+                report,
+            )
+        elif kind == "diametric_dimension":
+            self._reject_coincident_points(
+                coordinates.get("chord_point"),
+                coordinates.get("far_chord_point"),
+                "dimension_defining_points_coincident",
+                "Diameter chord points must be distinct",
+                index,
+                report,
+            )
+        elif kind == "radial_dimension":
+            self._reject_coincident_points(
+                coordinates.get("center"),
+                coordinates.get("chord_point"),
+                "dimension_defining_points_coincident",
+                "Radius center and chord point must be distinct",
+                index,
+                report,
+            )
+
+    @staticmethod
+    def _reject_coincident_points(
+        first: Any,
+        second: Any,
+        code: str,
+        message: str,
+        index: int,
+        report: ValidationReport,
+    ) -> None:
+        point1 = _point(first)
+        point2 = _point(second)
+        if (
+            point1 is not None
+            and point2 is not None
+            and _distance(point1, point2) <= GEOMETRY_TOLERANCE
+        ):
+            report.errors.append(ValidationIssue(code, message, index))
+
+    @staticmethod
+    def _validate_polyline(entity: EntityPlan, index: int, report: ValidationReport) -> None:
+        raw_points = entity.coordinates.get("points")
+        if not isinstance(raw_points, list):
+            return
+        points = [_point(value) for value in raw_points]
+        if any(point is None for point in points):
+            return
+        valid_points = [point for point in points if point is not None]
+        closed_value = entity.dimensions.get("closed", False)
+        closed = closed_value if type(closed_value) is bool else False
+        unique: list[tuple[float, float, float]] = []
+        for point in valid_points:
+            if not any(
+                math.hypot(point[0] - seen[0], point[1] - seen[1]) <= GEOMETRY_TOLERANCE
+                for seen in unique
+            ):
+                unique.append(point)
+        if len(unique) != len(valid_points):
+            report.errors.append(
+                ValidationIssue(
+                    "polyline_repeated_vertex",
+                    "Polyline vertices must not repeat",
+                    index,
+                )
+            )
+        minimum = 3 if closed else 2
+        if len(unique) < minimum:
+            report.errors.append(
+                ValidationIssue(
+                    "polyline_unique_vertices_invalid",
+                    f"{'Closed' if closed else 'Open'} polyline requires at least "
+                    f"{minimum} unique vertices",
+                    index,
+                )
+            )
+        segments = list(zip(valid_points, valid_points[1:]))
+        if closed and len(valid_points) >= 2:
+            segments.append((valid_points[-1], valid_points[0]))
+        if any(
+            math.hypot(start[0] - end[0], start[1] - end[1]) <= GEOMETRY_TOLERANCE
+            for start, end in segments
+        ):
+            report.errors.append(
+                ValidationIssue(
+                    "polyline_zero_length_segment",
+                    "Polyline must not contain zero-length segments",
+                    index,
+                )
+            )
 
     def _validate_dimension_safety(
         self, kind: str, entity: EntityPlan, index: int, report: ValidationReport
