@@ -21,6 +21,7 @@ from cad_memory.task_manager import (
     _geometry_signature,
     _geometry_values_equal,
 )
+from cad_vision.manifest import canonical_manifest_hash
 from mcp_tools.tools.validation import (
     _rollback_task_handles,
     _rollback_task_handles_with_diagnostics,
@@ -260,6 +261,76 @@ def _seed_task(
     )
 
 
+def _seed_reconstruction_task(
+    store: SQLiteMemoryStore,
+    adapter: FakeAdapter,
+    task_id: str,
+    entity: FakeEntity,
+    source_sha256: str,
+    expected_manifest: dict[str, Any],
+) -> None:
+    metadata = _metadata(task_id)
+    write_entity_provenance(adapter, adapter.document, entity, metadata)
+    plan = {
+        "task_name": task_id,
+        "drawing_profile": "general_2d",
+        "unit": "mm",
+        "source_provenance": {
+            "kind": "image_pdf_reconstruction",
+            "source_sha256": source_sha256,
+            "pipeline_version": "test-v1",
+            "manifest_required": True,
+            "expected_manifest_sha256": canonical_manifest_hash(expected_manifest),
+        },
+        "entities": [
+            {
+                "entity_type": "circle",
+                "coordinates": {"center": [0.0, 0.0, 0.0]},
+                "dimensions": {"radius": 5.0},
+                "layer": "AI_PREVIEW_OUTLINE",
+                "linetype": "ByLayer",
+                "dimension_source": "explicit_dimension",
+                "confidence": 1.0,
+            }
+        ],
+        "existing_layers": [],
+        "uncertain_items": [],
+        "user_confirmed": True,
+        "allow_delete": False,
+        "allow_overwrite": False,
+        "preview_mode": True,
+        "tolerance": 1e-6,
+    }
+    store.create_ai_task(
+        task_id=task_id,
+        task_name=task_id,
+        drawing_name=adapter.document.Name,
+        drawing_full_name=adapter.document.FullName,
+        drawing_profile="general_2d",
+        status="verified",
+        execution_result_id=1,
+        plan_data=plan,
+    )
+    store.add_ai_task_entities(
+        task_id,
+        [
+            {
+                "handle": entity.Handle,
+                "object_type": entity.ObjectName,
+                "operation": "create",
+                "owned": True,
+                "preview_layer": entity.Layer,
+                "current_layer": entity.Layer,
+                "formal_layer": "",
+                "source_type": metadata["source_type"],
+                "confidence": metadata["confidence"],
+                "approximate_reference": False,
+                "metadata": metadata,
+            }
+        ],
+    )
+
+
 def test_executor_assigns_unique_task_provenance():
     document = FakeDocument([])
     adapter = FakeAdapter(document)
@@ -470,6 +541,185 @@ def test_commit_requires_verified_task_and_changes_only_layer(tmp_path):
     assert entity.Layer == "OUTLINE"
     assert (entity.Center, entity.Radius) == before
     assert store.get_ai_task("task-a")["status"] == "committed"
+
+
+def test_reconstruction_commit_requires_trusted_complete_source_audit(tmp_path, monkeypatch):
+    import hashlib
+
+    from PIL import Image
+
+    source = tmp_path / "source.png"
+    Image.new("RGB", (120, 120), "white").save(source)
+    source_sha = hashlib.sha256(source.read_bytes()).hexdigest()
+    monkeypatch.setenv("MULTICAD_AUDIT_OUTPUT_ROOT", str(tmp_path / "audit"))
+    entity = FakeEntity("A1", "AI_PREVIEW_OUTLINE")
+    adapter = FakeAdapter(FakeDocument([entity]))
+    store = SQLiteMemoryStore(tmp_path / "memory.db")
+    incomplete_manifest = {
+        "minimum_counts": {"circle": 1},
+        "required_circles": [{"center": [0.0, 0.0], "radius": 5.0}],
+        "required_annotations": [{"text": "THRU", "match": "contains"}],
+        "provenance": {
+            "generated_by": "cad_prepare_reconstruction",
+            "source_sha256": source_sha,
+            "pipeline_version": "test-v1",
+        },
+    }
+    _seed_reconstruction_task(
+        store,
+        adapter,
+        "task-source",
+        entity,
+        source_sha,
+        incomplete_manifest,
+    )
+    manager = TaskTrackingManager(store)
+
+    before_audit = manager.commit_preview_task(adapter, "task-source", confirmed=True)
+    assert before_audit["blocked"]
+    assert "audit" in before_audit["reason"].casefold()
+
+    audit = manager.render_task_audit(
+        adapter,
+        "task-source",
+        expected_manifest=incomplete_manifest,
+        source_path=str(source),
+    )
+    assert audit["audit_gate"]["trusted_manifest"] is True
+    assert audit["audit_gate"]["manifest_passed"] is False
+    assert audit["audit_gate"]["passed"] is False
+    assert manager.commit_preview_task(adapter, "task-source", confirmed=True)["blocked"]
+
+    weakened_manifest = {
+        "minimum_counts": {"circle": 1},
+        "required_circles": [{"center": [0.0, 0.0], "radius": 5.0}],
+        "provenance": incomplete_manifest["provenance"],
+    }
+    audit = manager.render_task_audit(
+        adapter,
+        "task-source",
+        expected_manifest=weakened_manifest,
+        source_path=str(source),
+    )
+    assert audit["audit_gate"]["trusted_manifest"] is False
+    assert audit["audit_gate"]["passed"] is False
+    persisted = SQLiteMemoryStore(tmp_path / "memory.db").get_ai_task("task-source")
+    assert persisted["audit_data"] == audit["audit_gate"]
+    assert manager.commit_preview_task(adapter, "task-source", confirmed=True)["blocked"]
+
+
+def test_reconstruction_commit_rejects_entity_changes_after_bound_audit(tmp_path, monkeypatch):
+    import hashlib
+
+    from PIL import Image
+
+    source = tmp_path / "source.png"
+    Image.new("RGB", (120, 120), "white").save(source)
+    source_sha = hashlib.sha256(source.read_bytes()).hexdigest()
+    monkeypatch.setenv("MULTICAD_AUDIT_OUTPUT_ROOT", str(tmp_path / "audit"))
+    complete_manifest = {
+        "minimum_counts": {"circle": 1},
+        "required_circles": [{"center": [0.0, 0.0], "radius": 5.0}],
+        "provenance": {
+            "generated_by": "cad_prepare_reconstruction",
+            "source_sha256": source_sha,
+            "pipeline_version": "test-v1",
+        },
+    }
+    entity = FakeEntity("A1", "AI_PREVIEW_OUTLINE")
+    adapter = FakeAdapter(FakeDocument([entity]))
+    store = SQLiteMemoryStore(tmp_path / "memory.db")
+    _seed_reconstruction_task(
+        store,
+        adapter,
+        "task-source-clean",
+        entity,
+        source_sha,
+        complete_manifest,
+    )
+    manager = TaskTrackingManager(store)
+    audit = manager.render_task_audit(
+        adapter,
+        "task-source-clean",
+        expected_manifest=complete_manifest,
+        source_path=str(source),
+    )
+    assert audit["audit_gate"]["passed"] is True
+    preview = manager.commit_preview_task(adapter, "task-source-clean", confirmed=False)
+    assert preview["requires_confirmation"]
+
+    entity.Radius = 6.0
+    stale = manager.commit_preview_task(adapter, "task-source-clean", confirmed=True)
+    assert stale["blocked"]
+    assert "stale" in stale["reason"].casefold()
+
+
+def test_reconstruction_commit_rejects_stale_plan_source_and_artifact(tmp_path, monkeypatch):
+    import hashlib
+    from pathlib import Path
+
+    from PIL import Image
+
+    source = tmp_path / "source.png"
+    Image.new("RGB", (120, 120), "white").save(source)
+    original_source = source.read_bytes()
+    source_sha = hashlib.sha256(original_source).hexdigest()
+    monkeypatch.setenv("MULTICAD_AUDIT_OUTPUT_ROOT", str(tmp_path / "audit"))
+    manifest = {
+        "minimum_counts": {"circle": 1},
+        "required_circles": [{"center": [0.0, 0.0], "radius": 5.0}],
+        "provenance": {
+            "generated_by": "cad_prepare_reconstruction",
+            "source_sha256": source_sha,
+            "pipeline_version": "test-v1",
+        },
+    }
+    entity = FakeEntity("A1", "AI_PREVIEW_OUTLINE")
+    adapter = FakeAdapter(FakeDocument([entity]))
+    store = SQLiteMemoryStore(tmp_path / "memory.db")
+    _seed_reconstruction_task(
+        store,
+        adapter,
+        "task-stale",
+        entity,
+        source_sha,
+        manifest,
+    )
+    manager = TaskTrackingManager(store)
+
+    audit = manager.render_task_audit(
+        adapter,
+        "task-stale",
+        expected_manifest=manifest,
+        source_path=str(source),
+    )
+    assert audit["audit_gate"]["passed"] is True
+    stale_plan = dict(audit["audit_gate"])
+    stale_plan["plan_hash"] = "stale-plan"
+    store.update_ai_task("task-stale", status="verified", audit_data=stale_plan)
+    blocked = manager.commit_preview_task(adapter, "task-stale", confirmed=True)
+    assert blocked["blocked"] and "plan" in blocked["reason"].casefold()
+
+    manager.render_task_audit(
+        adapter,
+        "task-stale",
+        expected_manifest=manifest,
+        source_path=str(source),
+    )
+    source.write_bytes(b"changed source")
+    blocked = manager.commit_preview_task(adapter, "task-stale", confirmed=True)
+    assert blocked["blocked"] and "source file" in blocked["reason"].casefold()
+
+    source.write_bytes(original_source)
+    audit = manager.render_task_audit(
+        adapter,
+        "task-stale",
+        expected_manifest=manifest,
+        source_path=str(source),
+    )
+    Path(audit["audit_gate"]["comparison_artifact"]).unlink()
+    blocked = manager.commit_preview_task(adapter, "task-stale", confirmed=True)
+    assert blocked["blocked"] and "artifact" in blocked["reason"].casefold()
 
 
 def test_commit_manifest_reports_missing_layers_without_modifying_entities(tmp_path):

@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import ntpath
+from pathlib import Path
 from typing import Any
 
 from cad_vision.audit_renderer import render_task_audit
+from cad_vision.manifest import canonical_manifest_hash
 
 from .database import SQLiteMemoryStore
 from .executor import undo_group
@@ -16,6 +20,7 @@ from .provenance import (
     utc_now,
     write_entity_provenance,
 )
+from .receipts import canonical_plan_hash
 from .verifier import read_entity_state
 
 DEFAULT_FORMAL_LAYER_MAP = {
@@ -27,6 +32,44 @@ DEFAULT_FORMAL_LAYER_MAP = {
     "AI_UNCERTAIN": "AI_UNCERTAIN",
 }
 REVERT_LAYER = "AI_REVERTED"
+
+
+def _canonical_hash(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _file_sha256(path: str) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _entity_snapshot_hash(records: list[dict[str, Any]]) -> str:
+    snapshots = [
+        {
+            "handle": str(record.get("handle", "")),
+            "actual": record.get("actual", {}),
+        }
+        for record in records
+    ]
+    snapshots.sort(key=lambda item: item["handle"])
+    return _canonical_hash(snapshots)
+
+
+def _source_audit_required(task: dict[str, Any]) -> bool:
+    provenance = (task.get("plan_data") or {}).get("source_provenance") or {}
+    return bool(
+        provenance.get("kind") == "image_pdf_reconstruction" or provenance.get("manifest_required")
+    )
 
 
 def _geometry_signature(entity: Any) -> dict[str, Any]:
@@ -295,6 +338,63 @@ class TaskTrackingManager:
         )
         result["missing"] = missing
         result["source_entity_count"] = len(records)
+        source_provenance = (task.get("plan_data") or {}).get("source_provenance") or {}
+        manifest_provenance = (expected_manifest or {}).get("provenance") or {}
+        expected_source_sha = str(source_provenance.get("source_sha256") or "")
+        expected_manifest_sha = str(source_provenance.get("expected_manifest_sha256") or "")
+        actual_manifest_sha = canonical_manifest_hash(expected_manifest or {})
+        actual_source_sha = _file_sha256(source_path) if source_path else ""
+        trusted_manifest = bool(
+            expected_manifest
+            and manifest_provenance.get("generated_by") == "cad_prepare_reconstruction"
+            and expected_source_sha
+            and expected_manifest_sha
+            and actual_manifest_sha == expected_manifest_sha
+            and manifest_provenance.get("source_sha256") == expected_source_sha
+            and manifest_provenance.get("pipeline_version")
+            == source_provenance.get("pipeline_version")
+            and actual_source_sha == expected_source_sha
+        )
+        comparison_path = str(result.get("comparison_path") or "")
+        artifact_present = bool(comparison_path and Path(comparison_path).is_file())
+        manifest_passed = result.get("manifest_comparison", {}).get("passed") is True
+        layout_passed = result.get("audit", {}).get("dimension_layout_passed") is True
+        audit_passed = bool(
+            trusted_manifest
+            and manifest_passed
+            and layout_passed
+            and not missing
+            and artifact_present
+        )
+        audit_data = {
+            "version": "source-completeness-v1",
+            "required": _source_audit_required(task),
+            "passed": audit_passed,
+            "trusted_manifest": trusted_manifest,
+            "plan_hash": canonical_plan_hash(task["plan_data"]),
+            "source_sha256": actual_source_sha,
+            "source_path": str(Path(source_path).resolve()) if source_path else "",
+            "source_page": int(source_page),
+            "manifest_hash": actual_manifest_sha,
+            "expected_manifest_hash": expected_manifest_sha,
+            "manifest_provenance": {
+                "generated_by": manifest_provenance.get("generated_by"),
+                "source_sha256": manifest_provenance.get("source_sha256"),
+                "pipeline_version": manifest_provenance.get("pipeline_version"),
+            },
+            "entity_snapshot_hash": _entity_snapshot_hash(records),
+            "manifest_passed": manifest_passed,
+            "dimension_layout_passed": layout_passed,
+            "missing_entity_count": len(missing),
+            "comparison_artifact": comparison_path,
+            "comparison_artifact_present": artifact_present,
+        }
+        self.store.update_ai_task(
+            task_id,
+            status=task["status"],
+            audit_data=audit_data,
+        )
+        result["audit_gate"] = audit_data
         return result
 
     def commit_preview_task(
@@ -316,10 +416,83 @@ class TaskTrackingManager:
                 "reason": "Only a verified preview task can be committed",
                 "task_status": task["status"],
             }
+        if _source_audit_required(task):
+            audit_data = task.get("audit_data") or {}
+            source_provenance = (task.get("plan_data") or {}).get("source_provenance") or {}
+            current_plan_hash = canonical_plan_hash(task["plan_data"])
+            evidence_passed = bool(
+                audit_data.get("passed")
+                and audit_data.get("trusted_manifest")
+                and audit_data.get("manifest_passed")
+                and audit_data.get("dimension_layout_passed")
+                and audit_data.get("missing_entity_count") == 0
+                and audit_data.get("comparison_artifact_present")
+            )
+            if not evidence_passed:
+                return {
+                    "success": False,
+                    "blocked": True,
+                    "reason": "Source-completeness audit has not passed",
+                    "audit_gate": audit_data,
+                }
+            if audit_data.get("plan_hash") != current_plan_hash:
+                return {
+                    "success": False,
+                    "blocked": True,
+                    "reason": "Source-completeness audit is stale for the current plan",
+                    "audit_gate": audit_data,
+                }
+            if audit_data.get("source_sha256") != source_provenance.get(
+                "source_sha256"
+            ) or audit_data.get("expected_manifest_hash") != source_provenance.get(
+                "expected_manifest_sha256"
+            ):
+                return {
+                    "success": False,
+                    "blocked": True,
+                    "reason": (
+                        "Source-completeness audit is not bound to the current source manifest"
+                    ),
+                    "audit_gate": audit_data,
+                }
+            audit_source_path = str(audit_data.get("source_path") or "")
+            if (
+                not audit_source_path
+                or not Path(audit_source_path).is_file()
+                or _file_sha256(audit_source_path) != audit_data.get("source_sha256")
+            ):
+                return {
+                    "success": False,
+                    "blocked": True,
+                    "reason": "Source-completeness audit is stale for the source file",
+                    "audit_gate": audit_data,
+                }
+            artifact = str(audit_data.get("comparison_artifact") or "")
+            if not artifact or not Path(artifact).is_file():
+                return {
+                    "success": False,
+                    "blocked": True,
+                    "reason": "Source-completeness comparison artifact is missing",
+                    "audit_gate": audit_data,
+                }
         document = adapter._get_document("cad_commit_preview_task")
         _assert_document_identity(task, document, source=f"Task {task_id}")
         mapping = {**DEFAULT_FORMAL_LAYER_MAP, **(layer_mapping or {})}
         owned = self._load_owned_entities(document, task)
+        if _source_audit_required(task):
+            current_records = [
+                {"handle": row["handle"], "actual": read_entity_state(entity)}
+                for row, entity, _metadata in owned
+            ]
+            if (task.get("audit_data") or {}).get("entity_snapshot_hash") != _entity_snapshot_hash(
+                current_records
+            ):
+                return {
+                    "success": False,
+                    "blocked": True,
+                    "reason": "Source-completeness audit is stale for changed CAD entities",
+                    "audit_gate": task.get("audit_data") or {},
+                }
         manifest = []
         missing_layers: set[str] = set()
         for row, entity, metadata in owned:

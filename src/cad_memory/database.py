@@ -40,6 +40,7 @@ def _decode_json_fields(row: dict[str, Any]) -> dict[str, Any]:
         "errors",
         "plan_data",
         "verification_data",
+        "audit_data",
         "metadata",
     ):
         value = row.get(key)
@@ -135,6 +136,7 @@ class SQLiteMemoryStore:
                     execution_result_id INTEGER,
                     plan_data TEXT NOT NULL,
                     verification_data TEXT NOT NULL DEFAULT '{}',
+                    audit_data TEXT NOT NULL DEFAULT '{}',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -169,6 +171,11 @@ class SQLiteMemoryStore:
                     ON ai_task_entities(handle);
                 """
             )
+            columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(ai_tasks)")}
+            if "audit_data" not in columns:
+                connection.execute(
+                    "ALTER TABLE ai_tasks ADD COLUMN audit_data TEXT NOT NULL DEFAULT '{}'"
+                )
 
     def add_correction(
         self,
@@ -401,8 +408,8 @@ class SQLiteMemoryStore:
                 INSERT INTO ai_tasks (
                     task_id, task_name, drawing_name, drawing_full_name,
                     drawing_profile, status, execution_result_id, plan_data,
-                    verification_data, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?)
+                    verification_data, audit_data, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', '{}', ?, ?)
                 """,
                 (
                     task_id,
@@ -425,6 +432,7 @@ class SQLiteMemoryStore:
         *,
         status: str,
         verification_data: Any | None = None,
+        audit_data: Any | None = None,
         execution_result_id: int | None = None,
     ) -> dict[str, Any]:
         """Move a task through an explicit lifecycle state."""
@@ -434,6 +442,9 @@ class SQLiteMemoryStore:
         if verification_data is not None:
             assignments.append("verification_data = ?")
             params.append(_json(verification_data))
+        if audit_data is not None:
+            assignments.append("audit_data = ?")
+            params.append(_json(audit_data))
         if execution_result_id is not None:
             assignments.append("execution_result_id = ?")
             params.append(int(execution_result_id))
