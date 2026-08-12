@@ -56,6 +56,30 @@ the task entities' layers and provenance metadata. Geometry is read before and
 after; a mismatch aborts the operation and restores prior layers and metadata.
 `AI_UNCERTAIN` objects cannot be promoted to formal geometry layers.
 
+### Source-completeness commit gate
+
+Image/PDF reconstruction plans declare `source_provenance.kind` as
+`image_pdf_reconstruction` (or set `manifest_required=true`). These tasks cannot
+be committed merely because entity verification passed. `cad_render_task_audit`
+must persist a passing audit bound to all of the following:
+
+- the normalized plan hash;
+- the source file SHA-256;
+- a non-empty expected-manifest hash and its preparation provenance;
+- the freshly read CAD entity snapshot;
+- a passing manifest comparison and dimension-layout audit;
+- zero missing task entities and an existing source-vs-CAD comparison artifact.
+
+Changing the plan, source file, CAD entities, or removing the comparison artifact
+makes the saved audit stale and blocks commit. A caller-supplied manifest is not
+trusted unless its full hash and preparation provenance match the values persisted
+with the reconstruction plan; an empty or weakened ad hoc manifest cannot authorize
+commit.
+
+Manual/text-authored CAD plans without reconstruction source provenance retain the
+normal verified-task plus explicit-confirmation workflow. They do not require an
+image/PDF manifest or comparison artifact.
+
 ## Reversible task withdrawal
 
 `cad_revert_ai_task` does not issue a global AutoCAD Undo and does not hard-delete

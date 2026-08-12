@@ -54,6 +54,7 @@ class DrawingPlan(BaseModel):
     task_name: str = Field(min_length=1)
     drawing_profile: str | None = None
     unit: str | None = None
+    source_provenance: dict[str, Any] | None = None
     entities: list[EntityPlan] = Field(min_length=1)
     existing_layers: list[str] = Field(default_factory=list)
     uncertain_items: list[str] = Field(default_factory=list)
