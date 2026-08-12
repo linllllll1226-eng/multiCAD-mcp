@@ -35,7 +35,7 @@ class EntityPlan(BaseModel):
 
     entity_type: str = Field(min_length=1)
     coordinates: dict[str, Any] = Field(default_factory=dict)
-    dimensions: dict[str, float] = Field(default_factory=dict)
+    dimensions: dict[str, bool | float] = Field(default_factory=dict)
     layer: str = Field(min_length=1)
     linetype: str = "ByLayer"
     dimension_source: DimensionSource

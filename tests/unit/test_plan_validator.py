@@ -2,6 +2,8 @@
 
 import math
 
+import pytest
+
 from cad_memory.models import DrawingPlan
 from cad_memory.validator import PlanValidator
 
@@ -182,3 +184,190 @@ def test_missing_unit_and_negative_dimension_block_execution():
     report = validate([item], unit=None)
     codes = {issue.code for issue in report.errors}
     assert {"unit_missing", "dimension_nonpositive", "circle_radius_invalid"} <= codes
+
+
+@pytest.mark.parametrize(
+    "item",
+    [
+        entity("line", {"start": [0, 0], "end": [1, 0]}, {}),
+        entity("text", {"position": [0, 0]}, {"height": 2.5, "rotation": 0}, text_override="A"),
+        entity(
+            "rectangle",
+            {"corner1": [0, 0], "corner2": [2, 1]},
+            {"width": 2, "height": 1, "area": 2},
+        ),
+        entity("circle", {"center": [0, 0]}, {"radius": 1}),
+        entity("arc", {"center": [0, 0]}, {"radius": 1, "start_angle": 350, "end_angle": 10}),
+        entity("polyline", {"points": [[0, 0], [1, 0]]}, {"closed": False}),
+        entity(
+            "aligned_dimension",
+            {"start": [0, 0], "end": [1, 0]},
+            {"measurement": 1, "offset": 1},
+            layer="AI_PREVIEW_DIM",
+        ),
+        entity(
+            "linear_dimension",
+            {"start": [0, 0], "end": [0, 1]},
+            {"measurement": 1, "offset": 1},
+            layer="AI_PREVIEW_DIM",
+        ),
+        entity(
+            "diametric_dimension",
+            {"chord_point": [1, 0], "far_chord_point": [-1, 0]},
+            {"diameter": 2, "leader_length": 1},
+            layer="AI_PREVIEW_DIM",
+        ),
+        entity(
+            "radial_dimension",
+            {"center": [0, 0], "chord_point": [1, 0]},
+            {"radius": 1, "leader_length": 1},
+            layer="AI_PREVIEW_DIM",
+        ),
+    ],
+    ids=[
+        "line",
+        "text",
+        "rectangle",
+        "circle",
+        "arc",
+        "polyline",
+        "aligned-dimension",
+        "linear-dimension",
+        "diametric-dimension",
+        "radial-dimension",
+    ],
+)
+def test_supported_entity_schemas_accept_valid_geometry(item):
+    assert validate([item]).passed
+
+
+@pytest.mark.parametrize(
+    ("item", "expected_code"),
+    [
+        (entity("line", {"start": [0, 0], "end": [0, 0]}, {}), "line_zero_length"),
+        (
+            entity("text", {"position": [0, 0]}, {}, text_override="A"),
+            "dimension_missing",
+        ),
+        (
+            entity("rectangle", {"corner1": [0, 0], "corner2": [0, 1]}, {}),
+            "rectangle_width_nonpositive",
+        ),
+        (entity("circle", {"center": [0, 0]}, {"radius": 0}), "circle_radius_invalid"),
+        (
+            entity(
+                "arc",
+                {"center": [0, 0]},
+                {"radius": 1, "start_angle": 10, "end_angle": 10},
+            ),
+            "arc_sweep_invalid",
+        ),
+        (
+            entity(
+                "polyline",
+                {"points": [[0, 0], [1, 0], [1, 0]]},
+                {"closed": False},
+            ),
+            "polyline_zero_length_segment",
+        ),
+        (
+            entity(
+                "aligned_dimension",
+                {"start": [0, 0], "end": [0, 0]},
+                {},
+                layer="AI_PREVIEW_DIM",
+            ),
+            "dimension_defining_points_coincident",
+        ),
+        (
+            entity(
+                "linear_dimension",
+                {"start": [0, 0], "end": [0, 0]},
+                {},
+                layer="AI_PREVIEW_DIM",
+            ),
+            "dimension_defining_points_coincident",
+        ),
+        (
+            entity(
+                "diametric_dimension",
+                {"chord_point": [0, 0], "far_chord_point": [0, 0]},
+                {},
+                layer="AI_PREVIEW_DIM",
+            ),
+            "dimension_defining_points_coincident",
+        ),
+        (
+            entity(
+                "radial_dimension",
+                {"center": [0, 0], "chord_point": [0, 0]},
+                {},
+                layer="AI_PREVIEW_DIM",
+            ),
+            "dimension_defining_points_coincident",
+        ),
+    ],
+    ids=[
+        "line",
+        "text",
+        "rectangle",
+        "circle",
+        "arc",
+        "polyline",
+        "aligned-dimension",
+        "linear-dimension",
+        "diametric-dimension",
+        "radial-dimension",
+    ],
+)
+def test_supported_entity_schemas_reject_degenerate_geometry(item, expected_code):
+    report = validate([item])
+    assert not report.passed
+    assert expected_code in {issue.code for issue in report.errors}
+
+
+def test_open_polyline_keeps_boolean_closure_state_separate_from_dimensions():
+    item = entity("polyline", {"points": [[0, 0], [1, 0]]}, {"closed": False})
+    plan = DrawingPlan.model_validate(
+        {
+            "task_name": "typed-polyline",
+            "unit": "mm",
+            "entities": [item],
+            "existing_layers": sorted(LAYERS),
+            "user_confirmed": True,
+            "preview_mode": True,
+        }
+    )
+
+    assert plan.entities[0].dimensions["closed"] is False
+    assert PlanValidator().validate(plan, available_layers=LAYERS).passed
+
+
+def test_closed_polyline_requires_three_unique_vertices_and_no_duplicate_closure():
+    item = entity(
+        "polyline",
+        {"points": [[0, 0], [1, 0], [0, 0]]},
+        {"closed": True},
+    )
+    report = validate([item])
+    codes = {issue.code for issue in report.errors}
+    assert {
+        "polyline_repeated_vertex",
+        "polyline_unique_vertices_invalid",
+        "polyline_zero_length_segment",
+    } <= codes
+
+
+def test_polyline_rejects_repeated_nonconsecutive_vertex():
+    item = entity(
+        "polyline",
+        {"points": [[0, 0], [1, 0], [1, 1], [1, 0], [2, 0]]},
+        {"closed": False},
+    )
+    report = validate([item])
+    assert any(issue.code == "polyline_repeated_vertex" for issue in report.errors)
+
+
+def test_entity_schema_rejects_mistyped_dimension_field():
+    report = validate([entity("line", {"start": [0, 0], "end": [1, 0]}, {"length": 1})])
+    assert any(issue.code == "dimension_field_unsupported" for issue in report.errors)
