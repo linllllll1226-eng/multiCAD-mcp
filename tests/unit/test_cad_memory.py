@@ -1,5 +1,7 @@
 """Unit tests for the local SQLite CAD memory."""
 
+import sqlite3
+
 import pytest
 
 from cad_memory.database import SQLiteMemoryStore
@@ -105,6 +107,7 @@ def test_required_schema_columns_exist(tmp_path):
             "execution_result_id",
             "plan_data",
             "verification_data",
+            "audit_data",
             "created_at",
             "updated_at",
         },
@@ -128,6 +131,45 @@ def test_required_schema_columns_exist(tmp_path):
         for table, required_columns in expected.items():
             actual_columns = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
             assert required_columns <= actual_columns
+
+
+def test_existing_task_database_adds_audit_data_without_replacing_rows(tmp_path):
+    path = tmp_path / "legacy.db"
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE ai_tasks (
+                task_id TEXT PRIMARY KEY,
+                task_name TEXT NOT NULL,
+                drawing_name TEXT NOT NULL DEFAULT '',
+                drawing_full_name TEXT NOT NULL DEFAULT '',
+                drawing_profile TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL,
+                execution_result_id INTEGER,
+                plan_data TEXT NOT NULL,
+                verification_data TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO ai_tasks (
+                task_id, task_name, status, plan_data, created_at, updated_at
+            ) VALUES ('legacy-task', 'legacy', 'verified', '{}', 'before', 'before')
+            """
+        )
+
+    store = SQLiteMemoryStore(path)
+    migrated = store.get_ai_task("legacy-task", include_entities=False)
+    assert migrated["audit_data"] == {}
+    assert migrated["status"] == "verified"
+    with store._connection() as connection:
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(ai_tasks)")}
+        count = connection.execute("SELECT COUNT(*) FROM ai_tasks").fetchone()[0]
+    assert "audit_data" in columns
+    assert count == 1
 
 
 def test_dynamic_sql_rejects_table_injection_and_binds_search_values(tmp_path):
