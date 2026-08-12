@@ -369,6 +369,7 @@ class TaskTrackingManager:
                 for row, entity, metadata in owned:
                     target_layer = mapping[str(entity.Layer)]
                     original = dict(metadata)
+                    changed.append((row, entity, original))
                     entity.Layer = target_layer
                     updated = {
                         **metadata,
@@ -377,7 +378,6 @@ class TaskTrackingManager:
                         "committed_at": utc_now(),
                     }
                     write_entity_provenance(adapter, document, entity, updated)
-                    changed.append((row, entity, original))
             self._assert_geometry_unchanged(owned, snapshots)
             entity_updates = []
             for row, entity, _metadata in changed:
@@ -394,8 +394,12 @@ class TaskTrackingManager:
                 entity_updates=entity_updates,
                 status="committed",
             )
-        except Exception:
-            self._restore_entities(adapter, document, changed, snapshots)
+        except Exception as exc:
+            restore_report = self._restore_entities(adapter, document, changed, snapshots)
+            if not restore_report["fully_restored"]:
+                raise RuntimeError(
+                    f"{exc}; commit restoration failed: {restore_report['failed']}"
+                ) from exc
             raise
         return {
             "success": True,
@@ -460,6 +464,7 @@ class TaskTrackingManager:
                 for row, entity, metadata in owned:
                     original = dict(metadata)
                     source_layer = str(entity.Layer)
+                    changed.append((row, entity, original))
                     entity.Layer = REVERT_LAYER
                     updated = {
                         **metadata,
@@ -468,7 +473,6 @@ class TaskTrackingManager:
                         "reverted_at": utc_now(),
                     }
                     write_entity_provenance(adapter, document, entity, updated)
-                    changed.append((row, entity, original))
                 revert_layer.LayerOn = False
             self._assert_geometry_unchanged(owned, snapshots)
             entity_updates = []
@@ -485,12 +489,24 @@ class TaskTrackingManager:
                 entity_updates=entity_updates,
                 status="reverted",
             )
-        except Exception:
-            self._restore_entities(adapter, document, changed, snapshots)
+        except Exception as exc:
+            restore_report = self._restore_entities(adapter, document, changed, snapshots)
+            layer_restore_error: str | None = None
             try:
                 revert_layer.LayerOn = previous_layer_on
-            except Exception:
-                pass
+            except Exception as restore_exc:
+                layer_restore_error = str(restore_exc)
+            if not restore_report["fully_restored"] or layer_restore_error:
+                failures = list(restore_report["failed"])
+                if layer_restore_error:
+                    failures.append(
+                        {
+                            "scope": "revert_layer",
+                            "stage": "restore",
+                            "error": layer_restore_error,
+                        }
+                    )
+                raise RuntimeError(f"{exc}; revert restoration failed: {failures}") from exc
             raise
         return {
             "success": True,
@@ -560,10 +576,31 @@ class TaskTrackingManager:
         document: Any,
         changed: list[tuple[dict[str, Any], Any, dict[str, Any]]],
         snapshots: dict[str, dict[str, Any]],
-    ) -> None:
+    ) -> dict[str, Any]:
+        """Restore changed entities and retain diagnostics for every handle."""
+        details: list[dict[str, Any]] = []
+        restored: list[str] = []
+        failed: list[dict[str, Any]] = []
         for row, entity, metadata in reversed(changed):
             try:
                 entity.Layer = snapshots[row["handle"]]["layer"]
                 write_entity_provenance(adapter, document, entity, metadata)
-            except Exception:
-                pass
+            except Exception as exc:
+                detail = {
+                    "handle": row["handle"],
+                    "status": "failed",
+                    "stage": "restore",
+                    "error": str(exc),
+                }
+                details.append(detail)
+                failed.append(detail)
+                continue
+            details.append({"handle": row["handle"], "status": "restored"})
+            restored.append(row["handle"])
+        return {
+            "attempted": [row["handle"] for row, _entity, _metadata in changed],
+            "details": details,
+            "restored": restored,
+            "failed": failed,
+            "fully_restored": not failed,
+        }

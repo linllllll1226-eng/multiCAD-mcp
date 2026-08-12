@@ -6,7 +6,7 @@ Defines the common interface that all CAD adapters must implement.
 
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
 class LineWeight(Enum):
@@ -112,6 +112,7 @@ class CADInterface(ABC):
         color: str | int = "white",
         lineweight: int = 0,
         _skip_refresh: bool = False,
+        _on_created: Callable[[str], None] | None = None,
     ) -> str:
         """
         Draw a line from start to end point.
@@ -138,6 +139,7 @@ class CADInterface(ABC):
         color: str | int = "white",
         lineweight: int = 0,
         _skip_refresh: bool = False,
+        _on_created: Callable[[str], None] | None = None,
     ) -> str:
         """
         Draw a circle.
@@ -166,6 +168,7 @@ class CADInterface(ABC):
         color: str | int = "white",
         lineweight: int = 0,
         _skip_refresh: bool = False,
+        _on_created: Callable[[str], None] | None = None,
     ) -> str:
         """
         Draw an arc.
@@ -194,6 +197,7 @@ class CADInterface(ABC):
         color: str | int = "white",
         lineweight: int = 0,
         _skip_refresh: bool = False,
+        _on_created: Callable[[str], None] | None = None,
     ) -> str:
         """
         Draw a rectangle from two opposite corners.
@@ -220,6 +224,7 @@ class CADInterface(ABC):
         color: str | int = "white",
         lineweight: int = 0,
         _skip_refresh: bool = False,
+        _on_created: Callable[[str], None] | None = None,
     ) -> str:
         """
         Draw a polyline through multiple points.
@@ -273,6 +278,7 @@ class CADInterface(ABC):
         layer: str = "0",
         color: str | int = "white",
         _skip_refresh: bool = False,
+        _on_created: Callable[[str], None] | None = None,
     ) -> str:
         """
         Add text to the drawing.
@@ -326,6 +332,8 @@ class CADInterface(ABC):
         layer: str = "0",
         color: str | int = "white",
         offset: float = 10.0,
+        _skip_refresh: bool = False,
+        _on_created: Callable[[str], None] | None = None,
     ) -> str:
         """
         Add a dimension annotation.

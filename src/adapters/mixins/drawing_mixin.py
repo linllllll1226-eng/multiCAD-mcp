@@ -6,7 +6,7 @@ Handles all drawing operations (lines, circles, arcs, polylines, text, dimension
 
 import logging
 import math
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 from core import (
     CADInterface,
@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 class DrawingMixin:
     """Mixin for drawing operations."""
+
+    supports_guarded_creation_callback = True
 
     if TYPE_CHECKING:
 
@@ -61,6 +63,17 @@ class DrawingMixin:
             logger.debug(log_msg)
         return str(entity.Handle)
 
+    @staticmethod
+    def _notify_created(
+        entity: Any,
+        on_created: Callable[[str], None] | None,
+    ) -> str:
+        """Register a newly created CAD handle before any post-create writes."""
+        handle = str(entity.Handle)
+        if on_created is not None:
+            on_created(handle)
+        return handle
+
     def draw_line(
         self,
         start: Coordinate,
@@ -69,6 +82,7 @@ class DrawingMixin:
         color: str | int = "white",
         lineweight: int = 0,
         _skip_refresh: bool = False,
+        _on_created: Callable[[str], None] | None = None,
     ) -> str:
         """Draw a line between two points via COM AddLine().
 
@@ -92,6 +106,7 @@ class DrawingMixin:
         end_array = self._to_variant_array(end_pt)
 
         line = document.ModelSpace.AddLine(start_array, end_array)
+        self._notify_created(line, _on_created)
 
         return self._finalize_entity(
             line,
@@ -111,6 +126,7 @@ class DrawingMixin:
         color: str | int = "white",
         lineweight: int = 0,
         _skip_refresh: bool = False,
+        _on_created: Callable[[str], None] | None = None,
     ) -> str:
         """Draw a circle via COM AddCircle().
 
@@ -137,6 +153,7 @@ class DrawingMixin:
         center_array = self._to_variant_array(center_pt)
 
         circle = document.ModelSpace.AddCircle(center_array, radius)
+        self._notify_created(circle, _on_created)
 
         return self._finalize_entity(
             circle,
@@ -158,6 +175,7 @@ class DrawingMixin:
         color: str | int = "white",
         lineweight: int = 0,
         _skip_refresh: bool = False,
+        _on_created: Callable[[str], None] | None = None,
     ) -> str:
         """Draw an arc via COM AddArc().
 
@@ -185,6 +203,7 @@ class DrawingMixin:
             self._to_radians(start_angle),
             self._to_radians(end_angle),
         )
+        self._notify_created(arc, _on_created)
 
         return self._finalize_entity(
             arc,
@@ -204,6 +223,7 @@ class DrawingMixin:
         color: str | int = "white",
         lineweight: int = 0,
         _skip_refresh: bool = False,
+        _on_created: Callable[[str], None] | None = None,
     ) -> str:
         """Draw a rectangle from two opposite corner coordinates via a closed polyline.
 
@@ -239,6 +259,7 @@ class DrawingMixin:
             color=color,
             lineweight=lineweight,
             _skip_refresh=_skip_refresh,
+            _on_created=_on_created,
         )
 
     def draw_polyline(
@@ -249,6 +270,7 @@ class DrawingMixin:
         color: str | int = "white",
         lineweight: int = 0,
         _skip_refresh: bool = False,
+        _on_created: Callable[[str], None] | None = None,
     ) -> str:
         """Draw a polyline through a sequence of points via COM AddPolyline().
 
@@ -276,6 +298,7 @@ class DrawingMixin:
         variant_points = self._points_to_variant_array(normalized_points)
 
         polyline = document.ModelSpace.AddPolyline(variant_points)
+        self._notify_created(polyline, _on_created)
 
         if closed:
             polyline.Closed = True
@@ -343,6 +366,7 @@ class DrawingMixin:
         layer: str = "0",
         color: str | int = "white",
         _skip_refresh: bool = False,
+        _on_created: Callable[[str], None] | None = None,
     ) -> str:
         """Add a single-line text entity to the drawing via COM AddText().
 
@@ -364,6 +388,7 @@ class DrawingMixin:
         pos_array = self._to_variant_array(pos)
 
         text_obj = document.ModelSpace.AddText(text, pos_array, height)
+        self._notify_created(text_obj, _on_created)
         text_obj.Rotation = self._to_radians(rotation)
 
         return self._finalize_entity(
@@ -432,6 +457,7 @@ class DrawingMixin:
         color: str | int = "white",
         offset: float = 10.0,
         _skip_refresh: bool = False,
+        _on_created: Callable[[str], None] | None = None,
     ) -> str:
         """Add a dimension annotation with optional offset from the edge.
 
@@ -481,6 +507,7 @@ class DrawingMixin:
 
         # Use aligned dimension with offset position
         dim = document.ModelSpace.AddDimAligned(start_array, end_array, dim_position)
+        self._notify_created(dim, _on_created)
 
         if text:
             dim.TextOverride = text
