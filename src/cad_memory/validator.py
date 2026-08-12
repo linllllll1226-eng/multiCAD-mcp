@@ -54,12 +54,12 @@ ENTITY_DIMENSION_SCHEMAS: dict[str, dict[str, DimensionField]] = {
     "polyline": {"closed": DimensionField("boolean")},
     "aligned_dimension": {
         "measurement": DimensionField("positive"),
-        "offset": DimensionField("positive"),
+        "offset": DimensionField("finite"),
         "text_height": DimensionField("positive"),
     },
     "linear_dimension": {
         "measurement": DimensionField("positive"),
-        "offset": DimensionField("positive"),
+        "offset": DimensionField("finite"),
         "text_height": DimensionField("positive"),
     },
     "diametric_dimension": {
@@ -556,7 +556,10 @@ class PlanValidator:
         closed = closed_value if type(closed_value) is bool else False
         unique: list[tuple[float, float, float]] = []
         for point in valid_points:
-            if not any(_distance(point, seen) <= GEOMETRY_TOLERANCE for seen in unique):
+            if not any(
+                math.hypot(point[0] - seen[0], point[1] - seen[1]) <= GEOMETRY_TOLERANCE
+                for seen in unique
+            ):
                 unique.append(point)
         if len(unique) != len(valid_points):
             report.errors.append(
@@ -579,7 +582,10 @@ class PlanValidator:
         segments = list(zip(valid_points, valid_points[1:]))
         if closed and len(valid_points) >= 2:
             segments.append((valid_points[-1], valid_points[0]))
-        if any(_distance(start, end) <= GEOMETRY_TOLERANCE for start, end in segments):
+        if any(
+            math.hypot(start[0] - end[0], start[1] - end[1]) <= GEOMETRY_TOLERANCE
+            for start, end in segments
+        ):
             report.errors.append(
                 ValidationIssue(
                     "polyline_zero_length_segment",

@@ -368,6 +368,29 @@ def test_polyline_rejects_repeated_nonconsecutive_vertex():
     assert any(issue.code == "polyline_repeated_vertex" for issue in report.errors)
 
 
+@pytest.mark.parametrize("closed", [False, True], ids=["open", "closed"])
+def test_2d_polyline_rejects_vertices_that_differ_only_in_z(closed):
+    points = [[0, 0, 0], [0, 0, 1]]
+    if closed:
+        points.append([1, 0, 0])
+    item = entity("polyline", {"points": points}, {"closed": closed})
+    report = validate([item])
+    codes = {issue.code for issue in report.errors}
+    assert "polyline_repeated_vertex" in codes
+    assert "polyline_zero_length_segment" in codes
+
+
+@pytest.mark.parametrize("kind", ["aligned_dimension", "linear_dimension"])
+def test_linear_dimension_allows_negative_offset_for_opposite_side(kind):
+    item = entity(
+        kind,
+        {"start": [0, 0], "end": [1, 0]},
+        {"measurement": 1, "offset": -10},
+        layer="AI_PREVIEW_DIM",
+    )
+    assert validate([item]).passed
+
+
 def test_entity_schema_rejects_mistyped_dimension_field():
     report = validate([entity("line", {"start": [0, 0], "end": [1, 0]}, {"length": 1})])
     assert any(issue.code == "dimension_field_unsupported" for issue in report.errors)
