@@ -30,6 +30,11 @@ def register_vision_tools(mcp: Any) -> None:
         use_ocr: bool = True,
         ocr_language: str = "ch",
         ocr_min_confidence: float = 0.5,
+        ocr_policy: str = "",
+        raster_page_threshold: float = 0.15,
+        raster_region_threshold: float = 0.02,
+        source_unit: str = "",
+        drawing_unit: str = "",
     ) -> str:
         """Analyze one local PDF/image without reading or writing an AutoCAD DWG."""
         return _result(
@@ -41,6 +46,11 @@ def register_vision_tools(mcp: Any) -> None:
                 use_ocr=use_ocr,
                 ocr_language=ocr_language,
                 ocr_min_confidence=ocr_min_confidence,
+                ocr_policy=ocr_policy or None,
+                raster_page_threshold=raster_page_threshold,
+                raster_region_threshold=raster_region_threshold,
+                source_unit=source_unit or None,
+                drawing_unit=drawing_unit or None,
             )
         )
 
