@@ -2118,6 +2118,7 @@ dependencies = [
 [package.optional-dependencies]
 dev = [
     { name = "bandit" },
+    { name = "httpx" },
     { name = "interrogate" },
     { name = "mypy" },
     { name = "pip-audit" },
@@ -2153,6 +2154,7 @@ requires-dist = [
     { name = "chardet", marker = "extra == 'ocr'", specifier = ">=5.2,<6" },
     { name = "fastapi", specifier = ">=0.139.0" },
     { name = "fastmcp", specifier = ">=3.4.4" },
+    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28,<1" },
     { name = "interrogate", marker = "extra == 'dev'", specifier = ">=1.7.0" },
     { name = "mcp", specifier = ">=1.28.1" },
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5.0" },

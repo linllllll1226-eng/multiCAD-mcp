@@ -34,6 +34,42 @@ class TestAdapterInstantiation:
         adapter2 = AutoCADAdapter("AUTOCAD")
         assert adapter1.cad_type == adapter2.cad_type
 
+    def test_private_registry_cleans_every_failed_factory_candidate(self):
+        """Worker-local auto-detection releases failed adapters on their owner thread."""
+        from core import CADConnectionError
+        from src.adapters.adapter_manager import AdapterRegistry
+
+        candidates = []
+
+        class Candidate:
+            def __init__(self, cad_type):
+                self.cad_type = cad_type
+                self.disconnect_calls = 0
+
+            def connect(self, only_if_running=False):
+                return False
+
+            def disconnect(self):
+                self.disconnect_calls += 1
+                return True
+
+        def factory(cad_type):
+            candidate = Candidate(cad_type)
+            candidates.append(candidate)
+            return candidate
+
+        registry = AdapterRegistry(adapter_factory=factory)
+        with pytest.raises(CADConnectionError):
+            registry.get_adapter(only_if_running=True)
+
+        assert [candidate.cad_type for candidate in candidates] == [
+            "zwcad",
+            "autocad",
+            "bricscad",
+            "gcad",
+        ]
+        assert all(candidate.disconnect_calls == 1 for candidate in candidates)
+
 
 class TestContextManagers:
     """Test suite for context managers."""
@@ -65,6 +101,34 @@ class TestContextManagers:
             with pytest.raises(CADConnectionError):
                 with adapter:
                     pass
+
+    def test_external_com_owner_disconnect_does_not_uninitialize(self):
+        """An STA worker-owned adapter clears proxies but leaves COM to its owner."""
+        import pythoncom
+
+        adapter = AutoCADAdapter("autocad", manage_com_lifecycle=False)
+        adapter.application = object()
+        adapter.document = object()
+
+        with patch.object(pythoncom, "CoUninitialize") as mock_uninitialize:
+            assert adapter.disconnect() is True
+
+        mock_uninitialize.assert_not_called()
+        assert adapter.application is None
+        assert adapter.document is None
+
+    def test_adapter_com_uninitialization_is_balanced_once(self):
+        """Repeated cleanup cannot decrement the thread's COM count twice."""
+        import pythoncom
+
+        adapter = AutoCADAdapter("autocad")
+        adapter._com_initialized = True
+
+        with patch.object(pythoncom, "CoUninitialize") as mock_uninitialize:
+            assert adapter.disconnect() is True
+            assert adapter.disconnect() is True
+
+        mock_uninitialize.assert_called_once_with()
 
     def test_com_session_context_manager(self):
         """Test that com_session properly initializes/uninitializes COM."""
