@@ -1,8 +1,9 @@
 # Scanned Drawing OCR
 
-Version 0.4 adds optional local OCR for raster drawings and image-only PDFs. It
-uses PaddleOCR to return bounded text evidence; it does not turn uncertain text
-into trusted CAD geometry by itself.
+The optional local OCR path supports raster drawings, image-only PDFs, and hybrid
+PDFs that mix vector title-block content with rasterized dimensions. It uses
+PaddleOCR to return bounded text evidence; it does not turn uncertain text into
+trusted CAD geometry by itself.
 
 ## Install
 
@@ -18,9 +19,12 @@ another local directory.
 
 ## Routing
 
-- Vector PDFs: embedded paths and text are extracted directly; OCR is skipped
-  when usable vector text exists.
-- Scanned PDFs: pages are sent to OCR because no embedded text is available.
+- Vector PDFs: embedded paths and text are always extracted directly.
+- Hybrid PDFs: image coverage is evaluated per page. Raster-heavy pages are sent
+  to OCR; smaller meaningful image regions are cropped and OCRed without
+  rasterizing the rest of the page. A small logo below the configured region
+  threshold does not trigger OCR by itself.
+- Scanned PDFs: pages are sent to OCR because vector text coverage is incomplete.
 - PNG/JPEG/BMP/TIFF: raster geometry analysis and OCR can run together.
 - AutoCAD is never connected during source analysis.
 
@@ -28,6 +32,14 @@ another local directory.
 
 - `ocr_language`: defaults to `ch`, which also recognizes Latin engineering text.
 - `ocr_min_confidence`: defaults to `0.5`.
+- `ocr_policy`: `auto`, `force`, or `off`. An empty value preserves the legacy
+  `use_ocr` mapping (`true` means `auto`; `false` means `off`).
+- `raster_page_threshold`: raster coverage that triggers whole-page OCR; defaults
+  to `0.15`.
+- `raster_region_threshold`: minimum embedded-image coverage for region OCR;
+  defaults to `0.02`.
+- `source_unit` and `drawing_unit`: optional explicit unit evidence. A conflict is
+  reported and length records remain unresolved.
 - `max_pages`: bounded to at most 50 pages.
 - `use_cache`: caches identical source/options combinations locally.
 
@@ -36,14 +48,20 @@ pipeline also discards and rebuilds one corrupted native inference object after 
 runtime error, then retries exactly once. User-injected/test providers are never
 retried silently.
 
-Returned OCR evidence includes text, confidence, bounding box, page number, and
-parsed engineering candidates such as diameter, radius, linear tolerance,
-angle, depth, count, and thread annotations.
+Returned OCR evidence includes text, confidence, page-coordinate bounding box,
+page number, and parsed engineering candidates such as diameter, radius, linear
+tolerance, angle, depth, count, and thread annotations. Equivalent vector/OCR
+records merge only when their type, value, unit, page, and location agree; both
+provenance entries remain attached. Equal values at different locations remain
+separate evidence.
 
-The parser can return multiple records from one compound callout. It supports
-both `DEEP 8` and `8 DEEP`. A damaged OCR token such as `20V65` is retained as a
-low-confidence diameter/depth candidate with `needs_confirmation=true`; guarded
-planning must not promote it without source or user confirmation.
+The parser can return multiple records from one compound callout. `4X Ø10 DEPTH
+20` retains count, diameter, and depth; metric and inch thread classes remain
+typed. Tolerance is attached to its diameter, radius, depth, or linear record
+instead of creating a duplicate linear measurement. Length units default to
+unresolved rather than assuming millimetres. A damaged OCR token such as `20V65`
+is retained as a low-confidence candidate with `needs_confirmation=true`;
+guarded planning must not promote it without source or user confirmation.
 
 ## Verified benchmark
 

@@ -11,17 +11,24 @@ The enhanced MCP has two read-only source-analysis tools:
 
 1. Prefer vector extraction for vector PDFs. This preserves path geometry and
    embedded text instead of rasterizing everything and asking OCR to recover it.
-2. Normalize raster drawings before interpretation. The image path estimates page
+2. Inspect every PDF page for embedded image regions and raster coverage. The
+   `auto` policy OCRs only incomplete pages or meaningful raster regions, even
+   when a vector title block is present. `force` and `off` remain explicit.
+3. Normalize raster drawings before interpretation. The image path estimates page
    skew, deskews the image, then reports line and circle candidates.
-3. Convert common dimension annotations into typed records such as diameter,
-   radius, angle, depth, count, tolerance, and thread.
-4. Cache by source SHA-256, pipeline version, and semantic analysis options. A
-   compact summary and a later bounded-sample request share one canonical entry,
-   so changing `include_samples` does not rerun OCR/PDF/CV work.
-5. Preserve close parallel boundaries with two detectors: Hough lines for normal
+4. Convert common annotations into typed diameter, radius, angle, depth, count,
+   tolerance, and thread records. Length units remain unresolved until annotation,
+   source, or drawing-profile evidence resolves them.
+5. Merge co-located equivalent vector/OCR dimensions while retaining both
+   provenance chains. Do not merge equal values at different locations.
+6. Cache by source SHA-256, pipeline version, OCR policy, raster thresholds, unit
+   resolution, and other semantic options. A compact summary and a later
+   bounded-sample request share one canonical entry, so changing
+   `include_samples` does not rerun OCR/PDF/CV work.
+7. Preserve close parallel boundaries with two detectors: Hough lines for normal
    gaps and binary ink-stroke separation for lines only 2-3 pixels apart. One
    thick stroke is not split into a false pair.
-6. Keep results compact and bounded so MCP responses do not flood model context.
+8. Keep results compact and bounded so MCP responses do not flood model context.
 
 Damaged OCR callouts such as `20V65` are retained as low-confidence,
 `needs_confirmation=true` diameter/depth candidates. They improve recall without
@@ -35,10 +42,11 @@ uv sync --extra vision --extra ocr
 ```
 
 The `vision` extra provides vector PDF and raster geometry analysis. The `ocr`
-extra installs PaddleOCR plus its local Paddle inference engine. OCR is only
-invoked for raster images and image-only PDFs; embedded vector PDF text remains
-the preferred source. The first OCR request downloads official model weights to
-`data/paddle_models`, or to `PADDLE_PDX_CACHE_HOME` when that variable is set.
+extra installs PaddleOCR plus its local Paddle inference engine. Embedded vector
+PDF evidence remains preferred, but it no longer suppresses OCR for raster-heavy
+pages or embedded raster dimension regions. The first OCR request downloads
+official model weights to `data/paddle_models`, or to
+`PADDLE_PDX_CACHE_HOME` when that variable is set.
 
 ## Safety boundaries
 

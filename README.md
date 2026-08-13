@@ -106,12 +106,19 @@ Start preview. Use the guarded three-stage workflow and verify every principal
 dimension from real CAD entity data.
 ```
 
-For scanned drawings, `cad_analyze_source` uses OCR by default. Vector PDFs keep
-their more accurate embedded paths/text route. The first raster OCR request may
-download official models. Compact summaries and later detailed-sample requests now
-share one canonical cache entry, so requesting samples does not repeat heavy OCR.
-Damaged compound callouts such as `20V65` are retained only as low-confidence,
-confirmation-required diameter/depth candidates.
+`cad_analyze_source` uses the hybrid-aware `auto` OCR policy by default. Vector
+paths and text remain authoritative where present, while each PDF page is checked
+for incomplete raster coverage; only the required page or embedded image region is
+sent to OCR. Use `ocr_policy=force` for a deliberate full-page OCR comparison or
+`ocr_policy=off` to disable OCR. Compact summaries and later detailed-sample
+requests share one canonical cache entry, and OCR policy, raster thresholds, and
+unit-resolution inputs are part of the cache key.
+
+Length evidence remains `unit=null` until the annotation, `source_unit`, or
+`drawing_unit` resolves it. Conflicting source and drawing units remain unresolved.
+Typed diameter/radius tolerances stay attached to their record, and overlapping
+vector/OCR evidence is merged with both provenance chains. Damaged compound
+callouts such as `20V65` remain low-confidence, confirmation-required candidates.
 
 Convenience intents supported by the Skill include `分析这张图`, `开始预览`, `正式提交`, `检查图纸`, and `撤回本次`.
 

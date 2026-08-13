@@ -45,9 +45,11 @@ Use the currently connected `multiCAD-mcp` CAD tools to work on the active AutoC
 - For a local PDF or image, call `cad_analyze_source` before final model
   interpretation when the tool is available. This tool is read-only and must not
   be described as a CAD write or verification step.
-- Prefer `vector_pdf` results for embedded PDF paths and text. Use raster OCR only
-  when vector text is absent; never rasterize a vector PDF merely to recover data
-  that the vector extractor already returned.
+- Prefer `vector_pdf` results for embedded PDF paths and text, but inspect the
+  page-level `ocr_recommendation` and `ocr_coverage` fields. With `auto`, run OCR
+  for raster-heavy pages or meaningful embedded image regions even when a vector
+  title block exists. Use `force` only for an explicit comparison and `off` only
+  when the user or environment requires OCR to be disabled.
 - For raster images, use reported deskew and line/circle candidates to reduce
   visual ambiguity. Treat pixel geometry as candidates only. Never promote pixel
   distances to formal production dimensions without an explicit dimension or a
@@ -62,6 +64,10 @@ Use the currently connected `multiCAD-mcp` CAD tools to work on the active AutoC
   must not trigger duplicate OCR.
 - Treat OCR records with `needs_confirmation=true` as uncertain evidence. Keep
   them out of formal dimensions until the source image or user confirms them.
+- Treat `unit=null`, `unit_resolved=false`, or a source/drawing unit conflict as
+  unresolved evidence. Never assume millimetres. Co-located merged evidence must
+  retain both vector and OCR provenance; equal values at different locations are
+  separate annotations.
 - Do not claim OCR coverage when `ocr_provider_available=false`. Continue with
   model vision and clearly mark uncertain text instead of inventing a value.
 - If source analysis fails, report the exact failure. Do not compensate by calling
