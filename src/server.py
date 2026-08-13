@@ -9,6 +9,8 @@ Supports AutoCAD, ZWCAD, GstarCAD, and other COM-compatible CAD software.
 
 import logging
 import sys
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator
 
 from fastmcp import FastMCP
 
@@ -24,7 +26,7 @@ from mcp_tools.tools import (
     register_layer_tools,
     register_session_tools,
 )
-from web.api import api_app, log_handler
+from web.api import api_app, log_handler, shutdown_dashboard_worker
 
 # Setup at module load
 setup_utf8_encoding()
@@ -82,6 +84,23 @@ logger.info(f"Supported CAD types: {', '.join(get_supported_cads())}")
 logger.info("CAD applications will be connected on first tool use (lazy loading)")
 
 
+def build_http_app() -> Any:
+    """Build the combined MCP/dashboard ASGI app with both lifespans active."""
+    app = mcp.http_app()
+    mcp_lifespan = app.router.lifespan_context
+    dashboard_lifespan = api_app.router.lifespan_context
+
+    @asynccontextmanager
+    async def combined_lifespan(parent_app: Any) -> AsyncIterator[Any]:
+        async with mcp_lifespan(parent_app) as mcp_state:
+            async with dashboard_lifespan(api_app):
+                yield mcp_state
+
+    app.router.lifespan_context = combined_lifespan
+    app.mount("/", api_app)
+    return app
+
+
 if __name__ == "__main__":
     import threading
 
@@ -96,17 +115,23 @@ if __name__ == "__main__":
     # - If stdin is a TTY (interactive terminal) → HTTP with dashboard
     # - If stdin is a pipe (Claude Desktop, etc.) → stdio
     use_stdio = not sys.stdin.isatty()
+    dashboard_server = None
+    web_thread = None
 
     def run_dashboard():
         """Helper to run uvicorn in a thread."""
         logger.info(f"Starting dashboard on http://{host}:{port}")
-        uvicorn.run(api_app, host=host, port=port, log_level="warning")
+        if dashboard_server is not None:
+            dashboard_server.run()
 
     try:
         if use_stdio:
             logger.info("Starting multiCAD-MCP server in stdio mode...")
 
             # Start dashboard in background
+            dashboard_server = uvicorn.Server(
+                uvicorn.Config(api_app, host=host, port=port, log_level="warning")
+            )
             web_thread = threading.Thread(target=run_dashboard, daemon=True)
             web_thread.start()
 
@@ -115,10 +140,8 @@ if __name__ == "__main__":
         else:
             logger.info("Starting multiCAD-MCP server in HTTP mode...")
 
-            # Mount dashboard on the same app
-            # Note: FastMCP.http_app allows mounting additional FastAPI apps
-            app = mcp.http_app()
-            app.mount("/", api_app)
+            # Mount dashboard while explicitly composing both ASGI lifespans.
+            app = build_http_app()
 
             logger.info(f"Access dashboard at http://{host}:{port}/")
             logger.info(f"MCP endpoint at http://{host}:{port}/mcp")
@@ -130,3 +153,12 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Server error: {e}", exc_info=True)
         sys.exit(1)
+    finally:
+        if dashboard_server is not None:
+            dashboard_server.should_exit = True
+        if web_thread is not None and web_thread.is_alive():
+            web_thread.join(timeout=35.0)
+        if web_thread is not None and web_thread.is_alive():
+            logger.error("Dashboard HTTP thread did not stop before its shutdown deadline")
+        if not shutdown_dashboard_worker():
+            logger.error("Dashboard CAD worker did not stop before its shutdown deadline")

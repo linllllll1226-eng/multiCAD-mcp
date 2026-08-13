@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Routed dashboard refresh, export, drawing-switch, and entity queries through one bounded
+  STA COM worker, with explicit timeout/disconnect errors and process-wide MCP serialization.
 - Added `cad_render_task_audit` for background-safe SVG/PNG rendering from fresh task-owned
   AutoCAD entities, source-derived completeness manifests, and source/CAD comparison images.
 - Added `cad_capture_live_window` with COM HWND, process/title/class fallback discovery,
