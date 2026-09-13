@@ -187,6 +187,17 @@ def read_entity_state(entity: Any) -> dict[str, Any]:
     ):
         if extension_name not in state and rotated_name in state:
             state[extension_name] = state[rotated_name]
+    definition_keys = {
+        "AcDbDiametricDimension": ("chord_point", "far_chord_point"),
+        "AcDbRadialDimension": ("center", "chord_point"),
+    }.get(str(state.get("object_type")))
+    if definition_keys and any(key not in state for key in definition_keys):
+        from .dimension_points import read_definition_points
+
+        try:
+            state.update(read_definition_points(entity))
+        except Exception as exc:
+            state["definition_points_error"] = str(exc)
     if "text_height" not in state and "text" in str(state.get("object_type", "")).lower():
         height = _safe_get(entity, "Height")
         if height is not None:
@@ -311,6 +322,11 @@ class PostExecutionVerifier:
         for index, (target, handle) in enumerate(zip(plan.entities, handles)):
             try:
                 actual = read_entity_state(document.HandleToObject(handle))
+                if "definition_points_error" in actual:
+                    errors.append(
+                        f"entity[{index}] {handle}: definition points unavailable: "
+                        f"{actual['definition_points_error']}"
+                    )
                 if str(actual.get("linetype", "")).lower() == "bylayer":
                     try:
                         layer = document.Layers.Item(actual["layer"])
@@ -399,6 +415,10 @@ class PostExecutionVerifier:
         }:
             if "measurement" in target.dimensions:
                 checks["measurement"] = target.dimensions["measurement"]
+            elif kind == "diametric_dimension" and "diameter" in target.dimensions:
+                checks["measurement"] = target.dimensions["diameter"]
+            elif kind == "radial_dimension" and "radius" in target.dimensions:
+                checks["measurement"] = target.dimensions["radius"]
             checks["text_override"] = target.text_override or ""
             checks["background_fill"] = bool(target.background_fill)
             if "text_height" in target.dimensions:

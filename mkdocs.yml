@@ -70,6 +70,7 @@ nav:
   - Architecture: 02-ARCHITECTURE.md
   - Enhanced AutoCAD Workflow:
       - Memory and Validation: CAD_MEMORY_VALIDATION.md
+      - Isolated DWG Acceptance: ISOLATED_DWG_ACCEPTANCE.md
       - Task Tracking: CAD_TASK_TRACKING.md
       - Safety Hardening: CAD_SAFETY_HARDENING.md
       - Usability Layer: CAD_UX_IMPROVEMENTS.md
