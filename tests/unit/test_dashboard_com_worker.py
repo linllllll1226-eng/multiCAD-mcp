@@ -435,7 +435,8 @@ def test_cancelled_queued_ticket_never_reaches_the_adapter() -> None:
         assert queued.cancel() is True
         harness.export_release.set()
         running_result = running.future.result(timeout=1.0)
-        assert running_result.pop("cad_revision") > 0
+        running_revision = running_result.pop("cad_revision")
+        assert running_revision > 0
         assert running_result == {
             "success": True,
             "detail": "Export completed",
@@ -467,7 +468,8 @@ def test_shutdown_fails_queued_work_and_uninitializes_once() -> None:
 
     harness.export_release.set()
     running_result = running.future.result(timeout=1.0)
-    assert running_result.pop("cad_revision") > 0
+    running_revision = running_result.pop("cad_revision")
+    assert running_revision > 0
     assert running_result == {
         "success": True,
         "detail": "Export completed",
@@ -652,3 +654,134 @@ def test_dashboard_cache_rejects_an_older_cad_revision() -> None:
     assert snapshot["current_drawing"] == "B.dwg"
     assert snapshot["cad_revision"] == 20
     assert snapshot["generation"] == 1
+
+
+@pytest.mark.parametrize("signal_type", [SystemExit, KeyboardInterrupt, GeneratorExit])
+def test_interrupted_startup_fails_queued_tickets_without_uninitializing(
+    monkeypatch: pytest.MonkeyPatch, signal_type: type[BaseException]
+) -> None:
+    """A startup signal escapes only after all queued callers have been released."""
+    harness = _WorkerHarness()
+    entered = threading.Event()
+    release = threading.Event()
+    escaped: list[type[BaseException]] = []
+    monkeypatch.setattr(threading, "excepthook", lambda args: escaped.append(args.exc_type))
+
+    def interrupted_initialize() -> None:
+        harness.com_initialize()
+        entered.set()
+        if not release.wait(timeout=2.0):
+            raise RuntimeError("test did not release startup")
+        raise signal_type("startup interrupted")
+
+    worker = DashboardCadWorker(
+        adapter_provider=harness.adapter_provider,
+        com_initialize=interrupted_initialize,
+        com_uninitialize=harness.com_uninitialize,
+        worker_cleanup=harness.cleanup,
+    )
+    try:
+        first = worker.submit("refresh")
+        started = entered.wait(timeout=1.0)
+        assert started
+        second = worker.submit("export")
+        release.set()
+        for ticket in (first, second):
+            error = ticket.future.exception(timeout=1.0)
+            assert isinstance(error, CadWorkerStoppedError)
+            assert error.outcome_unknown is False
+    finally:
+        release.set()
+        stopped = worker.shutdown(timeout=1.0)
+
+    assert stopped
+    assert escaped == [signal_type]
+    assert worker.status()["startup_error"] == "COM initialization interrupted"
+    assert worker.status()["ready"] is False
+    assert worker.status()["queue_depth"] == 0
+    assert harness.adapter_call_count() == 0
+    assert harness.count("cleanup") == 0
+    assert harness.count("com:uninit") == 0
+
+
+@pytest.mark.parametrize("signal_type", [SystemExit, KeyboardInterrupt, GeneratorExit])
+def test_interrupted_command_marks_outcome_unknown_and_releases_queued_work(
+    monkeypatch: pytest.MonkeyPatch, signal_type: type[BaseException]
+) -> None:
+    """A signal must stop the worker without claiming that an entered CAD call rolled back."""
+    harness = _WorkerHarness(block_export=True)
+    escaped: list[type[BaseException]] = []
+    monkeypatch.setattr(threading, "excepthook", lambda args: escaped.append(args.exc_type))
+
+    def interrupted_export(adapter: _ThreadBoundFakeAdapter) -> bool:
+        adapter._touch("export_to_excel")
+        harness.export_entered.set()
+        if not harness.export_release.wait(timeout=2.0):
+            raise RuntimeError("test did not release export")
+        raise signal_type("export interrupted")
+
+    monkeypatch.setattr(_ThreadBoundFakeAdapter, "export_to_excel", interrupted_export)
+    worker = harness.make_worker()
+    try:
+        running = worker.submit("export")
+        entered = harness.export_entered.wait(timeout=1.0)
+        assert entered
+        queued = worker.submit("switch_drawing", {"drawing_name": "B.dwg"})
+        harness.export_release.set()
+        running_error = running.future.exception(timeout=1.0)
+        queued_error = queued.future.exception(timeout=1.0)
+        assert isinstance(running_error, CadWorkerStoppedError)
+        assert running_error.outcome_unknown is True
+        assert running_error.cad_revision > 0
+        assert running_error.__traceback__ is None
+        assert running_error.__context__ is None
+        assert isinstance(queued_error, CadWorkerStoppedError)
+        assert queued_error.outcome_unknown is False
+    finally:
+        harness.export_release.set()
+        stopped = worker.shutdown(timeout=1.0)
+
+    assert stopped
+    assert escaped == [signal_type]
+    assert worker.status()["queue_depth"] == 0
+    assert worker.status()["active_command"] is None
+    assert "adapter:switch_drawing" not in harness.names()
+    assert harness.count("cleanup") == 1
+    assert harness.count("com:uninit") == 1
+    with pytest.raises(CadWorkerStoppedError):
+        worker.submit("refresh")
+    with cad_operation(timeout=0.1):
+        pass  # The terminated worker must have released the process-wide CAD gate.
+
+
+@pytest.mark.parametrize("error_type", [RuntimeError, SystemExit, KeyboardInterrupt, GeneratorExit])
+def test_cleanup_failure_still_uninitializes_com(
+    monkeypatch: pytest.MonkeyPatch, error_type: type[BaseException]
+) -> None:
+    """COM release runs even when adapter cleanup itself is interrupted."""
+    harness = _WorkerHarness()
+    escaped: list[type[BaseException]] = []
+    monkeypatch.setattr(threading, "excepthook", lambda args: escaped.append(args.exc_type))
+
+    def interrupted_cleanup() -> None:
+        harness.cleanup()
+        raise error_type("cleanup interrupted")
+
+    worker = DashboardCadWorker(
+        adapter_provider=harness.adapter_provider,
+        cad_type_provider=harness.cad_type_provider,
+        com_initialize=harness.com_initialize,
+        com_uninitialize=harness.com_uninitialize,
+        worker_cleanup=interrupted_cleanup,
+    )
+    try:
+        result = worker.request("refresh")
+        assert result["snapshot"]["connected"] is True
+    finally:
+        stopped = worker.shutdown(timeout=1.0)
+
+    assert stopped
+    assert escaped == ([] if error_type is RuntimeError else [error_type])
+    assert harness.count("com:init") == 1
+    assert harness.count("cleanup") == 1
+    assert harness.count("com:uninit") == 1

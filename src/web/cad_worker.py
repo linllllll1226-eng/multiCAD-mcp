@@ -51,6 +51,11 @@ class CadWorkerStoppedError(CadWorkerError):
 
     code = "cad_worker_stopped"
 
+    def __init__(self, message: str, *, outcome_unknown: bool = False) -> None:
+        """Distinguish rejected work from an interrupted in-flight command."""
+        super().__init__(message)
+        self.outcome_unknown = outcome_unknown
+
 
 class CadDisconnectedError(CadWorkerError):
     """Raised when no running CAD application can be reached."""
@@ -578,19 +583,13 @@ class DashboardCadWorker:
         initialized = False
         self._thread_id = threading.get_ident()
         try:
-            self._com_initialize()
-            initialized = True
-        except BaseException as exc:
-            with self._state_lock:
+            try:
+                self._com_initialize()
+                initialized = True
+            except Exception as exc:
                 self._startup_error = str(exc)
-                self._closed = True
-                self._stop_requested.set()
-                self._ready.set()
-                pending = self._take_pending_requests()
-            self._finish_requests_as_stopped(pending)
-            return
-        self._ready.set()
-        try:
+                return
+            self._ready.set()
             while not self._stop_requested.is_set():
                 try:
                     request = self._queue.get(timeout=0.1)
@@ -605,19 +604,25 @@ class DashboardCadWorker:
                     self._pump_messages()
         finally:
             with self._state_lock:
+                if not initialized and self._startup_error is None:
+                    self._startup_error = "COM initialization interrupted"
                 self._closed = True
                 self._stop_requested.set()
+                self._ready.set()
                 pending = self._take_pending_requests()
-            self._finish_requests_as_stopped(pending)
-            if initialized:
-                try:
-                    self._worker_cleanup()
-                except Exception as exc:
-                    logger.debug("Dashboard worker adapter cleanup failed: %s", exc)
-                try:
-                    self._com_uninitialize()
-                except Exception as exc:
-                    logger.debug("Dashboard worker CoUninitialize failed: %s", exc)
+            try:
+                self._finish_requests_as_stopped(pending)
+            finally:
+                if initialized:
+                    try:
+                        self._worker_cleanup()
+                    except Exception as exc:
+                        logger.debug("Dashboard worker adapter cleanup failed: %s", exc)
+                    finally:
+                        try:
+                            self._com_uninitialize()
+                        except Exception as exc:
+                            logger.debug("Dashboard worker CoUninitialize failed: %s", exc)
 
     def _execute_request(self, request: _Request) -> None:
         if (
@@ -637,6 +642,7 @@ class DashboardCadWorker:
         if not request.future.set_running_or_notify_cancel():
             return
         self._active_request = request
+        failure_revision = 0
         try:
             remaining = max(0.0, request.deadline - time.monotonic())
             with cad_operation(timeout=remaining):
@@ -651,24 +657,39 @@ class DashboardCadWorker:
                         f"Dashboard CAD command '{request.command}' expired before execution"
                     )
                 request.running.set()
+                command_succeeded = False
                 try:
                     result = self._commands.execute(request.command, request.payload)
-                except BaseException as exc:
-                    error = self._sanitized_error(exc)
-                    error.cad_revision = next_cad_revision()
-                    raise error
+                    command_succeeded = True
+                finally:
+                    if not command_succeeded:
+                        # Invalidate stale snapshots before releasing the CAD gate,
+                        # including when a termination signal unwinds the worker.
+                        failure_revision = next_cad_revision()
         except CadOperationGateTimeoutError:
             self._set_exception_if_pending(
                 request.future,
                 CadWorkerTimeoutError("Timed out waiting for another CAD operation"),
             )
-        except BaseException as exc:
-            self._set_exception_if_pending(request.future, self._sanitized_error(exc))
+        except Exception as exc:
+            error = self._sanitized_error(exc)
+            error.cad_revision = failure_revision or error.cad_revision
+            self._set_exception_if_pending(request.future, error)
         else:
             self._set_result_if_pending(request.future, result)
+        finally:
+            if not request.future.done():
+                # Complete the caller's ticket without swallowing the signal or
+                # transferring a traceback containing COM objects across threads.
+                stopped = CadWorkerStoppedError(
+                    "Dashboard CAD worker interrupted during execution",
+                    outcome_unknown=request.running.is_set(),
+                )
+                stopped.cad_revision = failure_revision
+                self._set_exception_if_pending(request.future, stopped)
 
     @staticmethod
-    def _sanitized_error(exc: BaseException) -> CadWorkerError:
+    def _sanitized_error(exc: Exception) -> CadWorkerError:
         """Copy only stable error data so worker traceback frames do not cross threads."""
         if isinstance(exc, CadDisconnectedError):
             error: CadWorkerError = CadDisconnectedError(str(exc))
@@ -677,6 +698,8 @@ class DashboardCadWorker:
                 str(exc),
                 outcome_unknown=exc.outcome_unknown,
             )
+        elif isinstance(exc, CadWorkerStoppedError):
+            error = CadWorkerStoppedError(str(exc), outcome_unknown=exc.outcome_unknown)
         elif isinstance(exc, CadWorkerError):
             error = type(exc)(str(exc))
         else:
