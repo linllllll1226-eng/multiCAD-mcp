@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, Optional, TypeVar
 
 from mcp.server.fastmcp import FastMCP
 
+from adapters.com_gate import DEFAULT_CAD_GATE_TIMEOUT_SECONDS, cad_operation
 from core import CADOperationError
 
 T = TypeVar("T")
@@ -107,8 +108,9 @@ def cad_tool(mcp: FastMCP, operation_name: str):
             from adapters.adapter_manager import get_adapter
 
             try:
-                set_current_adapter(get_adapter(None))
-                return func(*args, **kwargs)
+                with cad_operation(timeout=DEFAULT_CAD_GATE_TIMEOUT_SECONDS):
+                    set_current_adapter(get_adapter(None))
+                    return func(*args, **kwargs)
             except CADOperationError:
                 raise
             except Exception as e:
@@ -161,8 +163,9 @@ def cad_tool_with_ui(
             from adapters.adapter_manager import get_adapter
 
             try:
-                set_current_adapter(get_adapter())
-                return func(*args, **kwargs)
+                with cad_operation(timeout=DEFAULT_CAD_GATE_TIMEOUT_SECONDS):
+                    set_current_adapter(get_adapter())
+                    return func(*args, **kwargs)
             except CADOperationError:
                 raise
             except Exception as e:

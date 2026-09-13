@@ -10,7 +10,7 @@ Handles:
 
 import logging
 import threading
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from core import CADConnectionError
 
@@ -28,7 +28,7 @@ class AdapterRegistry:
     _instance: Optional["AdapterRegistry"] = None
     _lock = threading.Lock()  # Class-level lock for singleton instantiation
 
-    def __init__(self):
+    def __init__(self, adapter_factory: Callable[[str], Any] | None = None):
         """Initialize the registry with empty state."""
         # Single active adapter instance
         self._adapter: Optional[Any] = None
@@ -36,6 +36,7 @@ class AdapterRegistry:
         self._cad_type: Optional[str] = None
         # Instance-level lock for mutations
         self._instance_lock = threading.Lock()
+        self._adapter_factory = adapter_factory
 
     @classmethod
     def get_instance(cls) -> "AdapterRegistry":
@@ -80,17 +81,28 @@ class AdapterRegistry:
         with self._instance_lock:
             if self._adapter is not None:
                 # We already have an adapter. Let's make sure it's connected.
-                if self._adapter.is_connected():
+                try:
+                    connected = bool(self._adapter.is_connected())
+                except Exception as exc:
+                    logger.debug(f"Could not verify cached {self._cad_type} adapter: {exc}")
+                    connected = False
+                if connected:
                     return self._adapter
 
                 # It exists but is disconnected. Try to reconnect.
-                if self._adapter.connect(only_if_running=only_if_running):
+                try:
+                    reconnected = bool(self._adapter.connect(only_if_running=only_if_running))
+                except Exception as exc:
+                    logger.debug(f"Could not reconnect cached {self._cad_type} adapter: {exc}")
+                    reconnected = False
+                if reconnected:
                     return self._adapter
 
-                if only_if_running:
-                    raise CADConnectionError(
-                        self._cad_type or "cad", "CAD application is not running"
-                    )
+                # The former adapter may own thread-local COM state. Release it
+                # before trying the other supported applications.
+                self._adapter.disconnect()
+                self._adapter = None
+                self._cad_type = None
 
             # No working adapter exists. We must auto-detect.
             self._auto_detect_internal(only_if_running=only_if_running)
@@ -102,14 +114,18 @@ class AdapterRegistry:
 
     def _auto_detect_internal(self, only_if_running: bool = False) -> None:
         """Internal auto-detection logic within the locked context."""
-        from adapters import AutoCADAdapter
-
         cad_priorities = ["zwcad", "autocad", "bricscad", "gcad"]
 
         for ct in cad_priorities:
+            adapter: Any | None = None
             try:
                 logger.info(f"Auto-detecting {ct} (only_if_running={only_if_running})...")
-                adapter = AutoCADAdapter(ct)
+                if self._adapter_factory is None:
+                    from adapters import AutoCADAdapter
+
+                    adapter = AutoCADAdapter(ct)
+                else:
+                    adapter = self._adapter_factory(ct)
                 if adapter.connect(only_if_running=only_if_running):
                     self._adapter = adapter
                     self._cad_type = ct
@@ -117,7 +133,12 @@ class AdapterRegistry:
                     return
             except Exception as e:
                 logger.debug(f"{ct} not available: {e}")
-                continue
+            finally:
+                if adapter is not None and adapter is not self._adapter:
+                    try:
+                        adapter.disconnect()
+                    except Exception as cleanup_error:
+                        logger.debug(f"Could not clean up failed {ct} adapter: {cleanup_error}")
 
     def get_cad_instances(self) -> Dict[str, Any]:
         """
@@ -142,10 +163,9 @@ class AdapterRegistry:
         with self._instance_lock:
             if self._adapter is not None:
                 try:
-                    if self._adapter.is_connected():
-                        logger.info(f"Disconnecting {self._cad_type}...")
-                        self._adapter.disconnect()
-                        logger.info(f"Disconnected {self._cad_type}")
+                    logger.info(f"Disconnecting {self._cad_type}...")
+                    self._adapter.disconnect()
+                    logger.info(f"Disconnected {self._cad_type}")
                 except Exception as e:
                     logger.error(f"Error disconnecting {self._cad_type}: {e}")
 

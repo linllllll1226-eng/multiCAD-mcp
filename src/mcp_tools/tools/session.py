@@ -11,6 +11,7 @@ Covers all non-content operations: connection lifecycle, view, and history.
 import json
 import logging
 import webbrowser
+from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from adapters.adapter_manager import (
@@ -19,10 +20,36 @@ from adapters.adapter_manager import (
     get_cad_instances,
     shutdown_all,
 )
+from adapters.com_gate import (
+    DEFAULT_CAD_GATE_TIMEOUT_SECONDS,
+    CadOperationGateTimeoutError,
+    cad_operation,
+)
 from core import CADConnectionError, get_config, get_supported_cads
 from mcp_tools.strict_mode import assert_legacy_action_allowed
 
 logger = logging.getLogger(__name__)
+
+
+def _serialized_cad_tool(func: Callable[..., str]) -> Callable[..., str]:
+    """Hold the process-wide CAD gate for one complete session tool call."""
+
+    @wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> str:
+        try:
+            with cad_operation(timeout=DEFAULT_CAD_GATE_TIMEOUT_SECONDS):
+                return func(*args, **kwargs)
+        except CadOperationGateTimeoutError as exc:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": str(exc),
+                    "error_code": "cad_busy",
+                },
+                indent=2,
+            )
+
+    return wrapper
 
 
 def _refresh_cache_safe():
@@ -33,6 +60,16 @@ def _refresh_cache_safe():
         refresh_dashboard_cache()
     except Exception as e:
         logger.debug(f"Dashboard cache refresh skipped: {e}")
+
+
+def _mark_cache_disconnected_safe() -> None:
+    """Clear dashboard state without reconnecting during a disconnect request."""
+    try:
+        from web.api import mark_dashboard_disconnected
+
+        mark_dashboard_disconnected()
+    except Exception as e:
+        logger.debug(f"Dashboard cache cleanup skipped: {e}")
 
 
 # ========== Action Handlers ==========
@@ -70,7 +107,7 @@ def _disconnect(spec: Dict[str, Any]) -> Dict[str, Any]:
     """
     try:
         shutdown_all()
-        _refresh_cache_safe()
+        _mark_cache_disconnected_safe()
         return {"success": True, "detail": "Disconnected."}
     except Exception as e:
         logger.error(f"Disconnection error: {e}")
@@ -267,6 +304,7 @@ def register_session_tools(mcp):
     """Register unified session management tool with FastMCP."""
 
     @mcp.tool()
+    @_serialized_cad_tool
     def manage_session(
         operations: str,
     ) -> str:

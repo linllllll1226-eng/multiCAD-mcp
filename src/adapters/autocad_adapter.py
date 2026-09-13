@@ -65,14 +65,17 @@ class AutoCADAdapter(
     [... docstring truncated for brevity ...]
     """
 
-    def __init__(self, cad_type: str = "autocad"):
+    def __init__(self, cad_type: str = "autocad", *, manage_com_lifecycle: bool = True):
         """Initialize AutoCAD adapter.
 
         Args:
-            cad_type: Type of CAD (autocad, zwcad, gcad, bricscad)
+            cad_type: Type of CAD (autocad, zwcad, gcad, bricscad).
+            manage_com_lifecycle: Initialize and uninitialize COM inside connect/disconnect.
+                Dedicated apartment owners such as the dashboard worker set this to False.
         """
         self.cad_type = cad_type.lower()
         self.config = get_cad_config(self.cad_type)
+        self.manage_com_lifecycle = bool(manage_com_lifecycle)
 
         # Thread-local storage for COM objects to prevent cross-thread RPC errors
         self._local = threading.local()
@@ -91,6 +94,15 @@ class AutoCADAdapter(
     def application(self, value: Any):
         """Set the thread-local application COM proxy."""
         self._local.application = value
+
+    @property
+    def _com_initialized(self) -> bool:
+        """Return whether this adapter initialized COM on the current thread."""
+        return bool(getattr(self._local, "com_initialized", False))
+
+    @_com_initialized.setter
+    def _com_initialized(self, value: bool) -> None:
+        self._local.com_initialized = bool(value)
 
     @property
     def document(self) -> Any:

@@ -30,6 +30,8 @@ class ConnectionMixin:
         # Tell type checker this mixin is used with CADAdapterProtocol
         cad_type: str
         config: "CADConfig"
+        manage_com_lifecycle: bool
+        _com_initialized: bool
         application: Any
         document: Any
 
@@ -56,12 +58,15 @@ class ConnectionMixin:
         try:
             logger.info(f"Connecting to {self.cad_type}...")
 
-            # Initialize COM for this thread
-            # CoInitialize() may raise if already initialized, which is fine
-            try:
-                pythoncom.CoInitialize()
-            except Exception as e:
-                logger.debug(f"CoInitialize: {e} (may already be initialized for thread)")
+            if bool(getattr(self, "manage_com_lifecycle", True)) and not bool(
+                getattr(self, "_com_initialized", False)
+            ):
+                # Every successful CoInitialize call must have one matching release.
+                try:
+                    pythoncom.CoInitialize()
+                    self._com_initialized = True
+                except Exception as e:
+                    logger.debug(f"CoInitialize: {e} (may already be initialized for thread)")
 
             # Try to get existing instance
             max_retries = 3
@@ -77,7 +82,6 @@ class ConnectionMixin:
                             f"{max_retries} attempts: {e}"
                         )
                     else:
-                        pythoncom.CoInitialize()  # Re-init just in case
                         import time
 
                         time.sleep(0.5)
@@ -88,6 +92,7 @@ class ConnectionMixin:
                     logger.debug(
                         f"{self.cad_type} not running and only_if_running=True. Skipping launch."
                     )
+                    self.disconnect()
                     return False
 
                 logger.info(f"{self.cad_type} not running, starting new instance...")
@@ -146,18 +151,23 @@ class ConnectionMixin:
         except pywintypes.com_error as e:
             error_msg = f"COM error: {str(e)}"
             logger.error(f"Failed to connect to {self.cad_type}: {error_msg}")
+            self.disconnect()
             raise CADConnectionError(self.cad_type, error_msg)
         except Exception as e:
             logger.error(f"Failed to connect to {self.cad_type}: {e}")
+            self.disconnect()
             raise CADConnectionError(self.cad_type, str(e))
 
     def disconnect(self) -> bool:
         """Disconnect from CAD application with COM cleanup."""
         try:
-            if self.application:
-                self.application = None
-                self.document = None
-            pythoncom.CoUninitialize()
+            self.document = None
+            self.application = None
+            if bool(getattr(self, "manage_com_lifecycle", True)) and bool(
+                getattr(self, "_com_initialized", False)
+            ):
+                self._com_initialized = False
+                pythoncom.CoUninitialize()
             logger.info(f"Disconnected from {self.cad_type}")
             return True
         except Exception as e:

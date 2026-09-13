@@ -155,12 +155,20 @@ Health check endpoint.
 
 ### Thread Safety
 
-The dashboard runs in a separate thread from the MCP server to avoid blocking CAD operations. Communication between threads is handled through a thread-safe cache:
+Dashboard HTTP handlers never receive an adapter, document, entity, or other live COM proxy.
+Live refresh, export, drawing-switch, and entity requests are submitted to one bounded worker
+queue. That worker initializes a single-threaded COM apartment, creates its adapter there, and
+returns copied JSON-compatible data only.
 
-- **MCP Thread**: Owns COM objects, updates cache after operations
-- **Dashboard Thread**: Reads from cache, provides UI
+- **Dashboard STA worker**: serializes live dashboard CAD calls and owns its COM proxies
+- **MCP tool thread**: executes MCP CAD calls under the same process-wide operation gate
+- **HTTP event loop**: awaits worker futures without blocking health or cached read endpoints
+- **Dashboard cache**: publishes deep-copied, generation-consistent snapshots
 
-This design ensures CAD operations remain responsive even during heavy UI activity.
+Cached status, layer, block, and drawing routes do not probe CAD. A queued operation can be
+cancelled before it starts. A timeout after COM execution begins returns HTTP 504 with
+`outcome_unknown: true`, because an in-flight COM call cannot be killed safely and may still
+finish. Clients must not automatically retry such a mutation.
 
 ### Cache System
 
@@ -168,14 +176,17 @@ The `DashboardCache` class provides thread-safe read/write operations:
 
 ```python
 cache = DashboardCache()
-cache.update(connected=True, cad_type="autocad")  # From MCP thread
-layers = cache.get("layers")  # From dashboard thread
+cache.replace({"connected": True, "cad_type": "autocad", "layers": []})
+snapshot = cache.snapshot()
 ```
 
 Cache is automatically populated when:
 - Server connects to CAD application
 - Manual refresh is triggered
 - MCP tools modify CAD data
+
+Live-operation failures use stable top-level JSON fields. A disconnected CAD or unavailable
+worker returns 503, an expired request returns 504, and a CAD operation failure returns 502.
 
 ## Configuration
 
