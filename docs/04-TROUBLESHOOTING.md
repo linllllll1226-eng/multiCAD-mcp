@@ -12,6 +12,22 @@
 
 ## Connection Issues
 
+### Server startup fails while opening its log file
+
+File logs default to `logs/multicad_mcp.log` inside the project. For a read-only
+deployment, set `MULTICAD_LOG_DIR` to a directory your account can write before
+starting the server, or set it in the MCP client's server environment:
+
+```powershell
+$env:MULTICAD_LOG_DIR = Join-Path $env:LOCALAPPDATA 'multiCAD-mcp\logs'
+```
+
+If directory creation or opening the UTF-8 log file fails, the server warns on
+stderr and continues without file logging. Standard output remains available for
+the stdio MCP protocol. This handles startup log-file access errors; it does not
+change filesystem permissions or recover a file handler that fails later while
+writing. The override applies to both `server.py` and `server_memory.py`.
+
 ### "Connection failed: AutoCAD.Application"
 
 ```powershell
