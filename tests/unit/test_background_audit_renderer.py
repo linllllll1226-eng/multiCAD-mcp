@@ -129,13 +129,43 @@ def test_plain_text_is_rendered_and_audited_as_annotation():
     )
     primitives = normalize_entities(records)
     note = primitives[-1]
-    assert note.kind == "dimension"
+    assert note.kind == "text"
     assert note.label == "THRU"
     audit = audit_primitives(primitives)
     assert any(
         warning["code"] == "DIMENSION_TEXT_GEOMETRY_COLLISION" and warning["handles"][0] == "T1"
         for warning in audit["warnings"]
     )
+
+
+def test_text_and_dimensions_keep_separate_manifest_counts_and_visible_notes(tmp_path, monkeypatch):
+    records = [_dimension_record("D1", [10, 15])]
+    records.append(
+        {
+            "handle": "T1",
+            "actual": {
+                "object_type": "AcDbText",
+                "layer": "AI_PREVIEW_DIM",
+                "position": [40, 30, 0],
+                "text": "ALL DIMENSIONS ARE IN MILLIMETERS",
+                "text_height": 2,
+            },
+        }
+    )
+    primitives = normalize_entities(records)
+    manifest = {
+        "minimum_counts": {"dimension": 1, "text": 1},
+        "required_annotations": [{"text": "ALL DIMENSIONS ARE IN MILLIMETERS"}],
+    }
+    assert compare_expected_manifest(primitives, manifest)["passed"] is True
+    missing_dimension = compare_expected_manifest(primitives[1:], manifest)
+    assert missing_dimension["passed"] is False
+    assert audit_primitives(primitives)["type_counts"] == {"dimension": 1, "text": 1}
+    monkeypatch.setenv("MULTICAD_AUDIT_OUTPUT_ROOT", str(tmp_path))
+    render_task_audit({"task_id": "text-counts", "drawing_name": "test.dwg"}, records)
+    assert "ALL DIMENSIONS ARE IN MILLIMETERS" in (
+        tmp_path / "text-counts" / "audit.svg"
+    ).read_text(encoding="utf-8")
 
 
 def test_dimension_text_geometry_collision_is_reported():
