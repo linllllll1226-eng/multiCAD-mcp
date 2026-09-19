@@ -172,11 +172,11 @@ def normalize_entities(records: Iterable[dict[str, Any]]) -> list[Primitive]:
             if not isinstance(text_height, (int, float)):
                 text_height = planned.get("dimensions", {}).get("height", 0.0)
             if position and label:
-                # Plain engineering notes participate in the same presentation
-                # gates as dimension text, without being counted as geometry.
+                # Keep notes distinct for completeness counts while retaining
+                # the same presentation checks as dimension labels.
                 primitives.append(
                     Primitive(
-                        "dimension",
+                        "text",
                         (position,),
                         layer,
                         handle,
@@ -402,8 +402,10 @@ def audit_primitives(
                 {"code": "DUPLICATE_GEOMETRY", "handles": handles, "severity": "warning"}
             )
 
-    geometry = [primitive for primitive in primitives if primitive.kind != "dimension"]
-    dimensions = [primitive for primitive in primitives if primitive.kind == "dimension"]
+    geometry = [
+        primitive for primitive in primitives if primitive.kind not in {"dimension", "text"}
+    ]
+    dimensions = [primitive for primitive in primitives if primitive.kind in {"dimension", "text"}]
     text_boxes = [
         (dimension, _dimension_text_box(dimension, default_text_height)) for dimension in dimensions
     ]
@@ -708,7 +710,7 @@ def _svg_render(
                 points.append(points[0])
             data = " ".join(f"{x:.2f},{y:.2f}" for x, y in points)
             parts.append(f'<polyline points="{data}" {common}/>')
-        elif primitive.kind == "dimension":
+        elif primitive.kind in {"dimension", "text"}:
             points = [transform(point) for point in primitive.points]
             if len(points) >= 2:
                 data = " ".join(f"{x:.2f},{y:.2f}" for x, y in points[:2])
@@ -777,7 +779,7 @@ def _png_render(
             points = [transform(point) for point in primitive.points]
             if primitive.closed and points[0] != points[-1]:
                 points.append(points[0])
-        elif primitive.kind == "dimension":
+        elif primitive.kind in {"dimension", "text"}:
             points = [transform(point) for point in primitive.points]
             if len(points) >= 2:
                 draw.line(points[:2], fill=color, width=1)
