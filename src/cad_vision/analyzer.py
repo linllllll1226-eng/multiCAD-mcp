@@ -13,6 +13,8 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from cad_runtime import data_directory
+
 from .dimensions import normalize_length_unit
 from .image import analyze_image_geometry
 from .ocr import extract_ocr, ocr_capabilities
@@ -27,7 +29,7 @@ OCR_RUNTIME_PROFILE = {
     "engine": "paddle_static",
     "device": "cpu",
 }
-DEFAULT_CACHE_DIR = Path(__file__).resolve().parents[2] / "data" / "vision_cache"
+DEFAULT_CACHE_DIR = data_directory() / "vision_cache"
 
 _SAMPLE_KEYS = {
     "line_samples",

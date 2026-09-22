@@ -4,7 +4,6 @@ import asyncio
 import json
 import os
 import sys
-from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -47,9 +46,7 @@ def test_guarded_stdio_starts_with_optional_file_logging(
     async def handshake() -> list[str]:
         with stderr_path.open("w", encoding="utf-8") as stderr:
             async with stdio_client(parameters, errlog=stderr) as (read, write):
-                async with ClientSession(
-                    read, write, read_timeout_seconds=timedelta(seconds=20)
-                ) as session:
+                async with ClientSession(read, write, read_timeout_seconds=20) as session:
                     await session.initialize()
                     result = await session.list_tools()
                     return sorted(tool.name for tool in result.tools)

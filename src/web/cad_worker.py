@@ -293,6 +293,7 @@ class _CadCommands:
         return _plain_data(result)
 
     def _connected_adapter(self) -> Any:
+        """Resolve the worker-owned adapter and fail on an unavailable connection."""
         try:
             adapter = self._adapter_provider()
         except CADConnectionError as exc:
@@ -311,6 +312,7 @@ class _CadCommands:
         return adapter
 
     def _refresh(self, adapter: Any, payload: dict[str, Any]) -> dict[str, Any]:
+        """Collect a detached dashboard snapshot through the connected adapter."""
         return {
             "snapshot": collect_dashboard_snapshot(
                 adapter,
@@ -320,12 +322,14 @@ class _CadCommands:
         }
 
     def _export(self, adapter: Any, _payload: dict[str, Any]) -> dict[str, Any]:
+        """Perform the requested export and reject a reported adapter failure."""
         success = bool(adapter.export_to_excel())
         if not success:
             raise CadOperationError("CAD export reported failure")
         return {"success": True, "detail": "Export completed"}
 
     def _switch_drawing(self, adapter: Any, payload: dict[str, Any]) -> dict[str, Any]:
+        """Switch to the requested drawing and return its fresh dashboard snapshot."""
         drawing_name = str(payload.get("drawing_name", "")).strip()
         if not drawing_name:
             raise CadOperationError("drawing_name is required")
@@ -344,6 +348,7 @@ class _CadCommands:
         }
 
     def _entities(self, adapter: Any, payload: dict[str, Any]) -> dict[str, Any]:
+        """Read a bounded page of entities with optional native-type filtering."""
         page = int(payload.get("page", 1))
         limit = int(payload.get("limit", 500))
         if page < 1:
@@ -580,6 +585,7 @@ class DashboardCadWorker:
         return not thread.is_alive()
 
     def _run(self) -> None:
+        """Own the STA apartment, service queued requests, and release COM on shutdown."""
         initialized = False
         self._thread_id = threading.get_ident()
         try:
@@ -625,6 +631,7 @@ class DashboardCadWorker:
                             logger.debug("Dashboard worker CoUninitialize failed: %s", exc)
 
     def _execute_request(self, request: _Request) -> None:
+        """Apply cancellation, deadline, and serialization gates to one queued command."""
         if (
             self._stop_requested.is_set()
             or request.cancel_requested.is_set()
@@ -718,6 +725,7 @@ class DashboardCadWorker:
             logger.debug("Dashboard worker COM message pump failed: %s", exc)
 
     def _take_pending_requests(self) -> list[_Request]:
+        """Drain queued requests so shutdown can resolve their futures."""
         pending: list[_Request] = []
         while True:
             try:
@@ -729,6 +737,7 @@ class DashboardCadWorker:
 
     @classmethod
     def _finish_requests_as_stopped(cls, requests: list[_Request]) -> None:
+        """Resolve unprocessed requests with a worker-stopped error."""
         for request in requests:
             cls._set_exception_if_pending(
                 request.future,
@@ -737,6 +746,7 @@ class DashboardCadWorker:
 
     @staticmethod
     def _set_exception_if_pending(future: Future[Any], error: BaseException) -> bool:
+        """Set a future error only when no earlier completion won the race."""
         try:
             future.set_exception(error)
         except InvalidStateError:
@@ -745,6 +755,7 @@ class DashboardCadWorker:
 
     @staticmethod
     def _set_result_if_pending(future: Future[Any], result: Any) -> bool:
+        """Set a future result only when no earlier completion won the race."""
         try:
             future.set_result(result)
         except InvalidStateError:

@@ -18,13 +18,15 @@ from typing import Any, Iterable
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
+from cad_runtime import data_directory
+
 from .analyzer import _validated_source
 
-DEFAULT_AUDIT_ROOT = Path(__file__).resolve().parents[2] / "data" / "audit_reports"
+DEFAULT_AUDIT_ROOT = data_directory() / "audit_reports"
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9_.-]+")
 
 
-def _audit_font(size: int = 13) -> ImageFont.ImageFont:
+def _audit_font(size: int = 13) -> ImageFont.ImageFont | ImageFont.FreeTypeFont:
     """Load a Unicode-capable font so engineering symbols render correctly."""
     candidates = [
         Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "arial.ttf",
@@ -57,6 +59,7 @@ class Primitive:
 
 
 def _point(value: Any) -> tuple[float, float] | None:
+    """Read an XY pair, rejecting missing or malformed coordinates."""
     if not isinstance(value, (list, tuple)) or len(value) < 2:
         return None
     try:
@@ -66,6 +69,7 @@ def _point(value: Any) -> tuple[float, float] | None:
 
 
 def _polyline_points(state: dict[str, Any]) -> tuple[tuple[float, float], ...]:
+    """Decode lightweight or 3D-stride polyline coordinates into XY vertices."""
     coordinates = state.get("coordinates")
     if not isinstance(coordinates, list):
         return ()
@@ -266,6 +270,7 @@ def _rectangle_overlap(
     second: tuple[float, float, float, float],
     gap: float = 0.0,
 ) -> bool:
+    """Check text rectangles with the requested clearance margin."""
     return not (
         first[2] + gap <= second[0]
         or second[2] + gap <= first[0]
@@ -375,6 +380,7 @@ def _geometry_hits_box(primitive: Primitive, box: tuple[float, float, float, flo
 
 
 def _distance_to_box(point: tuple[float, float], box: tuple[float, float, float, float]) -> float:
+    """Measure the shortest XY distance from a point to an axis-aligned box."""
     dx = max(box[0] - point[0], 0.0, point[0] - box[2])
     dy = max(box[1] - point[1], 0.0, point[1] - box[3])
     return math.hypot(dx, dy)
@@ -386,8 +392,8 @@ def audit_primitives(
     """Return deterministic checks that complement model-based image review."""
     warnings: list[dict[str, Any]] = []
     signatures: dict[tuple[Any, ...], list[str]] = defaultdict(list)
-    layer_counts = Counter()
-    type_counts = Counter()
+    layer_counts: Counter[str] = Counter()
+    type_counts: Counter[str] = Counter()
     for primitive in primitives:
         layer_counts[primitive.layer] += 1
         type_counts[primitive.kind] += 1
@@ -407,9 +413,10 @@ def audit_primitives(
     ]
     dimensions = [primitive for primitive in primitives if primitive.kind in {"dimension", "text"}]
     text_boxes = [
-        (dimension, _dimension_text_box(dimension, default_text_height)) for dimension in dimensions
+        (dimension, box)
+        for dimension in dimensions
+        if (box := _dimension_text_box(dimension, default_text_height)) is not None
     ]
-    text_boxes = [(dimension, box) for dimension, box in text_boxes if box is not None]
     minimum_gap = max(default_text_height * 0.35, 0.5)
     for index, (dimension, box) in enumerate(text_boxes):
         for other, other_box in text_boxes[index + 1 :]:
@@ -435,6 +442,7 @@ def audit_primitives(
         geometry_bounds = _bounds(geometry)
         maximum_distance = max(default_text_height * 8.0, 10.0)
         for dimension, _box in text_boxes:
+            assert dimension.text_position is not None
             distance = _distance_to_box(dimension.text_position, geometry_bounds)
             if distance > maximum_distance:
                 warnings.append(
@@ -604,10 +612,12 @@ def compare_expected_manifest(
             }
         )
 
-    passed = None if not manifest else bool(checks) and all(check["passed"] for check in checks)
+    manifest_passed = (
+        None if not manifest else bool(checks) and all(check["passed"] for check in checks)
+    )
     return {
         "provided": bool(manifest),
-        "passed": passed,
+        "passed": manifest_passed,
         "check_count": len(checks),
         "failed_count": sum(not check["passed"] for check in checks),
         "checks": checks,
@@ -807,7 +817,7 @@ def _source_preview(source_path: str, page: int, target_size: tuple[int, int]) -
             if page < 1 or page > len(document):
                 raise ValueError(f"source_page must be between 1 and {len(document)}")
             pixmap = document[page - 1].get_pixmap(matrix=fitz.Matrix(1.5, 1.5), alpha=False)
-            image = Image.frombytes("RGB", [pixmap.width, pixmap.height], pixmap.samples)
+            image = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
     else:
         with Image.open(source) as opened:
             image = opened.convert("RGB")

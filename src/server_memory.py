@@ -25,7 +25,8 @@ register_task_tools(mcp)
 register_vision_tools(mcp)
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Run the guarded STDIO entry point without a dashboard listener."""
     try:
         logger.info("Starting enhanced multiCAD-MCP in local stdio-only mode")
         mcp.run(transport="stdio")
@@ -34,3 +35,7 @@ if __name__ == "__main__":
     except Exception as exc:
         logger.error("Enhanced multiCAD-MCP failed: %s", exc, exc_info=True)
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

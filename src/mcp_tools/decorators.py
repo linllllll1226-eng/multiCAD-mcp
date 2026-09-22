@@ -9,7 +9,7 @@ Provides decorators for standardizing adapter access and error handling:
 from functools import wraps
 from typing import Any, Callable, Dict, Optional, TypeVar
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 from adapters.com_gate import DEFAULT_CAD_GATE_TIMEOUT_SECONDS, cad_operation
 from core import CADOperationError

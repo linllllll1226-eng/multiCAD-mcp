@@ -1,0 +1,34 @@
+{
+  "name": "chemical_pfd",
+  "unit": "mm",
+  "layers": [
+    {"name": "EQUIPMENT", "color": 7, "linetype": "Continuous"},
+    {"name": "PROCESS", "color": 4, "linetype": "Continuous"},
+    {"name": "UTILITY", "color": 3, "linetype": "Continuous"},
+    {"name": "INSTRUMENT", "color": 2, "linetype": "Continuous"},
+    {"name": "CENTER", "color": 1, "linetype": "CENTER2"},
+    {"name": "HIDDEN", "color": 2, "linetype": "HIDDEN2"},
+    {"name": "DIM", "color": 6, "linetype": "Continuous"},
+    {"name": "TEXT", "color": 7, "linetype": "Continuous"},
+    {"name": "AI_PREVIEW_OUTLINE", "color": 7, "linetype": "Continuous"},
+    {"name": "AI_PREVIEW_CENTER", "color": 1, "linetype": "CENTER2"},
+    {"name": "AI_PREVIEW_HIDDEN", "color": 2, "linetype": "HIDDEN2"},
+    {"name": "AI_PREVIEW_HATCH", "color": 3, "linetype": "Continuous"},
+    {"name": "AI_PREVIEW_DIM", "color": 6, "linetype": "Continuous"},
+    {"name": "AI_UNCERTAIN", "color": 4, "linetype": "HIDDEN2"}
+  ],
+  "text_height": 2.5,
+  "dimension_rules": {
+    "style": "AI_STANDARD_DIM",
+    "native_diameter_dimension": true,
+    "native_radial_dimension": true,
+    "text_override": "",
+    "background_fill": false,
+    "decimal_places": 1,
+    "dimension_layout_must_not_change_geometry": true
+  },
+  "allowed_tolerance": 0.1,
+  "force_preview": true,
+  "default_save_directory": "D:\\AI\\CAD_Drawings\\ChemicalPFD",
+  "notes": "PFD profile for equipment, process, utility, and instrumentation layout; process values are not inferred from image scale."
+}

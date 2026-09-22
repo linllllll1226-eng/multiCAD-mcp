@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from cad_ux.profiles import load_profiles, memory_tool_arguments  # noqa: E402
+from cad_runtime import resource_path  # noqa: E402
 
 
 def _text(result: Any) -> str:
@@ -24,7 +26,7 @@ def _text(result: Any) -> str:
 async def _call_json(session: Any, name: str, arguments: dict[str, Any]) -> Any:
     result = await session.call_tool(name, arguments)
     text = _text(result)
-    if getattr(result, "isError", False):
+    if result.is_error:
         raise RuntimeError(f"{name} failed: {text}")
     return json.loads(text)
 
@@ -36,7 +38,7 @@ async def sync_profiles(
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
 
-    parameters = StdioServerParameters(command=python, args=[server])
+    parameters = StdioServerParameters(command=python, args=[server], env=dict(os.environ))
     async with stdio_client(parameters) as (read_stream, write_stream):
         async with ClientSession(read_stream, write_stream) as session:
             await session.initialize()
@@ -74,8 +76,8 @@ def main() -> None:
     """Validate profiles by default and sync them only with --apply."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true")
-    parser.add_argument("--profile-dir", default=str(ROOT / "data" / "profiles"))
-    parser.add_argument("--python", default=str(ROOT / ".venv" / "Scripts" / "python.exe"))
+    parser.add_argument("--profile-dir", default=str(resource_path("profiles")))
+    parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--server", default=str(ROOT / "src" / "server_memory.py"))
     args = parser.parse_args()
     profiles = load_profiles(args.profile_dir)

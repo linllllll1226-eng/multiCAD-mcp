@@ -10,7 +10,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
-DEFAULT_DATABASE_PATH = Path(__file__).resolve().parents[2] / "data" / "cad_memory.db"
+from cad_runtime import data_directory
+
+DEFAULT_DATABASE_PATH = data_directory() / "cad_memory.db"
 ALLOWED_TABLES = {"corrections", "drawing_profiles", "execution_results"}
 TASK_STATUSES = {
     "executing",
@@ -23,14 +25,17 @@ TASK_STATUSES = {
 
 
 def _utc_now() -> str:
+    """Return a UTC timestamp for persisted audit records."""
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _json(value: Any) -> str:
+    """Serialize structured evidence deterministically as Unicode JSON."""
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
 def _decode_json_fields(row: dict[str, Any]) -> dict[str, Any]:
+    """Decode persisted structured fields and normalize stored boolean flags."""
     for key in (
         "context",
         "layer_rules",
@@ -209,6 +214,8 @@ class SQLiteMemoryStore:
                     _utc_now(),
                 ),
             )
+            if cursor.lastrowid is None:
+                raise RuntimeError("SQLite insert did not return a row ID")
             record_id = int(cursor.lastrowid)
         return self.get_record("corrections", record_id)
 
@@ -362,6 +369,8 @@ class SQLiteMemoryStore:
                     _utc_now(),
                 ),
             )
+            if cursor.lastrowid is None:
+                raise RuntimeError("SQLite insert did not return a row ID")
             record_id = int(cursor.lastrowid)
         return self.get_record("execution_results", record_id)
 

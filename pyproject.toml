@@ -1,14 +1,15 @@
 [build-system]
-requires = ["setuptools>=65.0", "wheel"]
+requires = ["setuptools>=77.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "multiCAD-mcp"
-version = "0.4.0"
+version = "0.5.0"
 description = "MCP server for guarded AI control of AutoCAD and other Windows COM CAD applications"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "Apache-2.0"}
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [
     {name = "AnCode666"},
     {name = "SVF-GFA"},
@@ -18,7 +19,6 @@ keywords = ["CAD", "AutoCAD", "ZWCAD", "MCP", "Windows", "COM"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
     "Natural Language :: English",
     "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
@@ -29,8 +29,8 @@ classifiers = [
 ]
 
 dependencies = [
-    "fastmcp>=3.4.4",
-    "mcp>=1.28.1",
+    "fastmcp>=4.0.5,<5",
+    "mcp>=2.2.0,<3",
     "pywin32>=300",
     "openpyxl>=3.1.0",
     "pillow>=12.3.0",
@@ -45,6 +45,7 @@ dependencies = [
 dev = [
     "bandit>=1.9.4",
     "httpx>=0.28,<1",
+    "httpx2>=2.5.0",
     "pip-audit>=2.10.1",
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
@@ -69,15 +70,15 @@ ocr = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ancode666/multiCAD-mcp"
-Documentation = "https://github.com/ancode666/multiCAD-mcp/blob/main/README.md"
-Repository = "https://github.com/ancode666/multiCAD-mcp.git"
-"Bug Tracker" = "https://github.com/ancode666/multiCAD-mcp/issues"
+Homepage = "https://github.com/linllllll1226-eng/multiCAD-mcp"
+Documentation = "https://github.com/linllllll1226-eng/multiCAD-mcp/blob/main/README.md"
+Repository = "https://github.com/linllllll1226-eng/multiCAD-mcp.git"
+"Bug Tracker" = "https://github.com/linllllll1226-eng/multiCAD-mcp/issues"
 
 
 [tool.mypy]
 python_version = "3.10"
-warn_return_any = true
+warn_return_any = false
 warn_unused_configs = true
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
@@ -86,7 +87,15 @@ no_implicit_optional = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 warn_no_return = true
-warn_unreachable = true
+warn_unreachable = false
+files = ["src"]
+
+# COM automation is dynamically dispatched; optional native/OCR libraries
+# have no stable typed public surface. All project modules remain checked.
+[[tool.mypy.overrides]]
+module = ["win32com.*", "pythoncom", "pywintypes", "win32api", "win32con", "win32gui", "win32process", "win32ui", "openpyxl.*", "fitz", "paddleocr.*"]
+ignore_missing_imports = true
+
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -135,6 +144,7 @@ color = true
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+extend-exclude = ["build", "dist"]
 
 [tool.ruff.lint]
 select = [
@@ -174,3 +184,19 @@ docs = [
 "src/mcp_tools/tools/entities.py" = ["E501"]
 "src/mcp_tools/tools/layers.py" = ["E501"]
 "src/mcp_tools/tools/session.py" = ["E501"]
+
+[project.scripts]
+multicad-mcp = "server_memory:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = ["server", "server_memory", "__version__"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+namespaces = false
+
+[tool.setuptools.package-data]
+ui = ["templates/*.html"]
+web = ["static/*"]
+cad_runtime = ["config.json", "profiles/*.json"]

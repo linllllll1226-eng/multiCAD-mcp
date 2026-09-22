@@ -318,12 +318,14 @@ def _wait_for_valid_window_rect(
 ) -> tuple[int, int, int, int]:
     """Wait briefly for Windows to publish a real rectangle after SW_RESTORE."""
     deadline = time.monotonic() + timeout
-    last = tuple(int(value) for value in win32gui.GetWindowRect(hwnd))
+    left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+    last = (int(left), int(top), int(right), int(bottom))
     while last[2] - last[0] < 100 or last[3] - last[1] < 100:
         if time.monotonic() >= deadline:
             return last
         time.sleep(interval)
-        last = tuple(int(value) for value in win32gui.GetWindowRect(hwnd))
+        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+        last = (int(left), int(top), int(right), int(bottom))
     return last
 
 

@@ -1,0 +1,32 @@
+{
+  "name": "university_mechanical_drawing",
+  "unit": "mm",
+  "layers": [
+    {"name": "OUTLINE", "color": 7, "linetype": "Continuous"},
+    {"name": "CENTER", "color": 1, "linetype": "CENTER2"},
+    {"name": "HIDDEN", "color": 2, "linetype": "HIDDEN2"},
+    {"name": "HATCH", "color": 3, "linetype": "Continuous"},
+    {"name": "DIM", "color": 6, "linetype": "Continuous"},
+    {"name": "TEXT", "color": 7, "linetype": "Continuous"},
+    {"name": "AI_PREVIEW_OUTLINE", "color": 7, "linetype": "Continuous"},
+    {"name": "AI_PREVIEW_CENTER", "color": 1, "linetype": "CENTER2"},
+    {"name": "AI_PREVIEW_HIDDEN", "color": 2, "linetype": "HIDDEN2"},
+    {"name": "AI_PREVIEW_HATCH", "color": 3, "linetype": "Continuous"},
+    {"name": "AI_PREVIEW_DIM", "color": 6, "linetype": "Continuous"},
+    {"name": "AI_UNCERTAIN", "color": 4, "linetype": "HIDDEN2"}
+  ],
+  "text_height": 3.5,
+  "dimension_rules": {
+    "style": "AI_STANDARD_DIM",
+    "native_diameter_dimension": true,
+    "native_radial_dimension": true,
+    "text_override": "",
+    "background_fill": false,
+    "decimal_places": 2,
+    "dimension_layout_must_not_change_geometry": true
+  },
+  "allowed_tolerance": 0.01,
+  "force_preview": true,
+  "default_save_directory": "D:\\AI\\CAD_Drawings\\UniversityMechanical",
+  "notes": "Metric university mechanical drawing profile; formal dimensions must come from explicit or uniquely derived geometry."
+}
