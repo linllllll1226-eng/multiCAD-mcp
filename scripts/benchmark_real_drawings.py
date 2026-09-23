@@ -128,7 +128,9 @@ def evaluate(case, source, output):
 
     raw = analyze_source(str(source), use_cache=False, include_samples=True, ocr_policy="auto")
     analysis = raw["analysis"]
-    geometry = []
+    geometry = [
+        item for page in analysis.get("pages", []) for item in page.get("geometry_samples", [])
+    ]
     for x1, y1, x2, y2 in analysis.get("line_samples", []):
         geometry.append({"kind": "line", "start": [x1, y1], "end": [x2, y2]})
     for x, y, r in analysis.get("circle_samples", []):
@@ -166,7 +168,7 @@ def evaluate(case, source, output):
         "stage": "source_analysis",
         "deskew": skew,
     }
-    # Public API samples are bounded, not a full entity manifest. Never infer
+    # Public API samples remain candidates, not a CAD plan. Never infer
     # absent coordinates from bounding boxes or from the ground-truth labels.
     result = score_case(case, prediction)
     result["rejects_false_completion_claim"] = score_case(

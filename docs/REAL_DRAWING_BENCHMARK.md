@@ -40,11 +40,28 @@ and any failure to reject a deliberately false completion claim.
 
 ## Observed limits and work still required for #10
 
-On Windows with the locked dev+vision environment, PaddleOCR is unavailable.
+On Windows with only the locked dev+vision environment, PaddleOCR is unavailable.
 Raster text and dimension misses are retained, not replaced by ground-truth
-labels. Vector analysis currently exposes path summaries, not a complete entity
-coordinate manifest; missing coordinates also remain missing. The original SVG
-is converted to PDF without deriving predictions from its ground truth.
+labels. An opt-in local run reusing already installed PaddleOCR 3.7.0 /
+PaddlePaddle 3.2.0 and cached PP-OCRv5 server models recovered 9/13 selected
+texts and 6/10 selected dimensions on the turned-part image. It still misread
+some vertical numerals (for example 12 as 2). Provider availability does not
+imply correct dimension recognition.
+
+Vector analysis now exposes bounded line coordinates, rectangle/quad edges,
+and conservative circle-fit candidates in unrotated PDF points. Standard
+four-cubic circles and dense closed circular polylines are explicitly marked
+approximate and requiring confirmation; they are not manufacturing dimensions
+or a ready CAD plan. Unsupported curves, skipped nonstroke paths, sample
+truncation and page truncation remain explicit. The pipeline cache version was
+incremented so old path-only responses cannot hide the added coordinates.
+
+The public section sample improved from 0/10 to 10/10 selected geometry labels;
+its regression floor is now 10. This is selected-label recall, not complete
+drawing reconstruction. The original SVG is converted to PDF without deriving
+predictions from its ground truth. See the
+[PyMuPDF path API](https://pymupdf.readthedocs.io/en/latest/page.html#Page.get_drawings)
+for the source coordinate and path-item contracts.
 
 The CI pilot does not supply an exhaustive representative corpus: true scans and
 camera photos, broad Chinese engineering callouts, independently reviewed arc
