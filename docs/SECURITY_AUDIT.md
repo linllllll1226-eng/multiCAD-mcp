@@ -1,3 +1,7 @@
+# Historical v0.4.0 audit snapshot
+
+The tool/test counts and commands below describe the v0.4.0 audit, not current main. Current release gates are documented in QUALITY_GATES.md and RELEASE.md.
+
 # Security audit
 
 This page records the v0.4.0 release security gate. It is not a claim that the software is free of

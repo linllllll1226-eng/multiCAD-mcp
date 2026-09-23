@@ -106,6 +106,7 @@ class ValidationReport:
 
 
 def _point(value: Any) -> tuple[float, float, float] | None:
+    """Accept finite 2D or 3D coordinates and supply a zero elevation for 2D points."""
     if not isinstance(value, (list, tuple)) or len(value) not in {2, 3}:
         return None
     try:
@@ -120,6 +121,7 @@ def _point(value: Any) -> tuple[float, float, float] | None:
 
 
 def _distance(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
+    """Measure Euclidean separation of two XYZ points."""
     return math.dist(a, b)
 
 
@@ -191,6 +193,7 @@ class PlanValidator:
         layers: set[str],
         report: ValidationReport,
     ) -> None:
+        """Accumulate geometry, layer, provenance, and operation safety findings."""
         kind = entity.entity_type.lower()
         if entity.layer not in layers:
             report.errors.append(
@@ -273,6 +276,7 @@ class PlanValidator:
     def _validate_required_geometry(
         self, kind: str, entity: EntityPlan, index: int, report: ValidationReport
     ) -> None:
+        """Require the coordinate fields needed by the selected entity type."""
         requirements = {
             "line": ("start", "end"),
             "text": ("position",),
@@ -368,8 +372,8 @@ class PlanValidator:
         if schema is None:
             return
 
-        for name, rule in schema.items():
-            if rule.required and name not in entity.dimensions:
+        for name, field_rule in schema.items():
+            if field_rule.required and name not in entity.dimensions:
                 report.errors.append(
                     ValidationIssue(
                         "dimension_missing",
@@ -534,6 +538,7 @@ class PlanValidator:
         index: int,
         report: ValidationReport,
     ) -> None:
+        """Reject point pairs that cannot define nondegenerate geometry."""
         point1 = _point(first)
         point2 = _point(second)
         if (
@@ -545,6 +550,7 @@ class PlanValidator:
 
     @staticmethod
     def _validate_polyline(entity: EntityPlan, index: int, report: ValidationReport) -> None:
+        """Check ordered finite vertices, closure, planarity, and nonzero segments."""
         raw_points = entity.coordinates.get("points")
         if not isinstance(raw_points, list):
             return
@@ -597,6 +603,7 @@ class PlanValidator:
     def _validate_dimension_safety(
         self, kind: str, entity: EntityPlan, index: int, report: ValidationReport
     ) -> None:
+        """Enforce native dimension and presentation restrictions."""
         if kind not in DIMENSION_TYPES:
             return
         if entity.background_fill:
@@ -648,6 +655,7 @@ class PlanValidator:
     def _validate_constraint(
         self, constraint: ConstraintSpec, index: int, report: ValidationReport
     ) -> None:
+        """Evaluate one supported geometric constraint against its tolerance."""
         data = constraint.data
         tolerance = constraint.tolerance
         try:
@@ -655,8 +663,11 @@ class PlanValidator:
                 centers = [_point(p) for p in data.get("centers", [])]
                 passed = (
                     len(centers) >= 2
-                    and all(centers)
-                    and all(_distance(centers[0], center) <= tolerance for center in centers[1:])
+                    and centers[0] is not None
+                    and all(
+                        center is not None and _distance(centers[0], center) <= tolerance
+                        for center in centers[1:]
+                    )
                 )
             elif constraint.kind == "symmetry":
                 axis = data.get("axis")
@@ -704,22 +715,26 @@ class PlanValidator:
 
     @staticmethod
     def _uniform_distribution(data: dict[str, Any], tolerance: float) -> bool:
+        """Check uniform spacing of the supplied geometric samples."""
         center = _point(data.get("center"))
         points = [_point(value) for value in data.get("points", [])]
         expected_angle = float(data.get("angle", 360 / len(points))) if points else 0
         if center is None or len(points) < 2 or any(point is None for point in points):
             return False
-        radii = [_distance(center, point) for point in points]
+        valid_points = [point for point in points if point is not None]
+        radii = [_distance(center, point) for point in valid_points]
         if max(radii) - min(radii) > tolerance:
             return False
         angles = sorted(
-            (math.degrees(math.atan2(p[1] - center[1], p[0] - center[0])) % 360) for p in points
+            (math.degrees(math.atan2(p[1] - center[1], p[0] - center[0])) % 360)
+            for p in valid_points
         )
         gaps = [(angles[(i + 1) % len(angles)] - angles[i]) % 360 for i in range(len(angles))]
         return all(abs(gap - expected_angle) <= tolerance for gap in gaps)
 
     @staticmethod
     def _tangent(data: dict[str, Any], tolerance: float) -> bool:
+        """Check the supplied circle or line tangency relationship."""
         center1 = _point(data.get("center1"))
         center2 = _point(data.get("center2"))
         if center1 and center2:

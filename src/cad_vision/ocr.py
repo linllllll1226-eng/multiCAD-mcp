@@ -11,11 +11,13 @@ import threading
 from pathlib import Path
 from typing import Any, Callable
 
+from cad_runtime import data_directory
+
 from .dimensions import parse_dimension_text
 
 _PIPELINE_LOCK = threading.RLock()
 _PIPELINES: dict[tuple[str, str], Any] = {}
-DEFAULT_MODEL_CACHE = Path(__file__).resolve().parents[2] / "data" / "paddle_models"
+DEFAULT_MODEL_CACHE = data_directory() / "paddle_models"
 _LANGUAGE_ALIASES = {
     "eng": "en",
     "english": "en",
@@ -68,7 +70,7 @@ def ocr_capabilities() -> dict[str, Any]:
 
 def _create_pipeline(language: str, device: str) -> Any:
     _configure_runtime_paths()
-    from paddleocr import PaddleOCR  # type: ignore[import-untyped]
+    from paddleocr import PaddleOCR
 
     return PaddleOCR(
         lang=_normalize_language(language),
@@ -205,7 +207,7 @@ def _pdf_ocr_inputs(
 ) -> list[dict[str, Any]]:
     """Render canonical PDF regions and retain their device-to-page transforms."""
     try:
-        import fitz  # type: ignore[import-untyped]
+        import fitz
     except ImportError as exc:  # pragma: no cover - dependency-specific
         raise RuntimeError("Selected-page PDF OCR requires PyMuPDF") from exc
 

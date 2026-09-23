@@ -1,4 +1,4 @@
-# multiCAD-mcp v0.4
+# multiCAD-mcp v0.5
 
 [English](README.md) | **简体中文**
 
@@ -13,8 +13,8 @@ AutoCAD 2022 增加了受控绘图工作流，可用于图片重建、结果复�
 
 - **主要实机验证目标：** Windows 上的 AutoCAD 2022（`COM 24.1`）。
 - **MCP 工具数量：** 25 个，包括 7 个上游统一工具和 18 个增强工作流、记忆、任务与视觉工具。
-- **自动测试：** 293 项单元测试，覆盖后台离屏渲染、源图完整性、必需参数防漏门禁、OCR 恢复、近距离双线保留和 HWND 截图。
-- **质量门禁：** 完整 Ruff 检查、格式检查和仓库卫生检查。
+- **自动测试：** Windows CI 覆盖几何、回滚、源图完整性、安装包和 MCP 协议；当前数量以对应提交的 CI 报告为准。
+- **质量门禁：** Ruff、mypy、80% 文档字符串覆盖率、关键模块测试覆盖率和仓库卫生检查。
 - **通信方式：** 本地 STDIO，Codex 不需要监听网络端口。
 - **安全入口：** `src/server_memory.py`。
 - **兼容入口：** `src/server.py`，用于保留上游兼容性，但不包含完整受控工作流。
@@ -151,7 +151,8 @@ cad_memory_delete, cad_save_drawing_profile, cad_load_drawing_profile,
 cad_plan_validate, cad_execute_plan, cad_verify_execution,
 cad_list_ai_tasks, cad_get_task_entities, cad_get_entity_provenance,
 cad_commit_preview_task, cad_revert_ai_task,
-cad_analyze_source, cad_vision_capabilities
+cad_analyze_source, cad_vision_capabilities,
+cad_render_task_audit, cad_capture_live_window
 ```
 
 ## 测试和质量检查
@@ -190,3 +191,7 @@ Windows CI 会在 Python 3.10、3.11 和 3.12 上运行测试。
 ## 许可证与致谢
 
 本项目使用 Apache-2.0 许可证。重新分发衍生版本时，请保留上游版权、许可证和来源说明。
+
+## Release and compatibility / 发布与兼容性
+
+See [wheel installation](docs/RELEASE.md), [MCP compatibility matrix](docs/MCP_COMPATIBILITY.md), and [enforced quality gates](docs/QUALITY_GATES.md).

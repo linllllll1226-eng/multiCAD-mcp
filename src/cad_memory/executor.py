@@ -15,6 +15,7 @@ from .validator import PlanValidator
 
 
 def _coord(value: Any) -> tuple[float, float, float]:
+    """Normalize a plan point to an XYZ tuple for COM calls."""
     values = list(value)
     if len(values) == 2:
         values.append(0.0)
@@ -251,6 +252,7 @@ class PlanExecutor:
         *,
         on_created: Callable[[str], None] | None = None,
     ) -> str:
+        """Dispatch one validated operation and register created handles before styling."""
         if entity.operation == "layout_only":
             return self._layout_dimension(adapter, entity)
         if entity.operation != "create":
@@ -373,6 +375,7 @@ class PlanExecutor:
         radial: bool,
         on_created: Callable[[str], None] | None = None,
     ) -> str:
+        """Create a native radial or diametric dimension and immediately register its handle."""
         document = adapter._get_document("cad_execute_plan_dimension")
         c = entity.coordinates
         leader_length = float(entity.dimensions.get("leader_length", 10.0))
@@ -395,6 +398,7 @@ class PlanExecutor:
 
     @staticmethod
     def _layout_dimension(adapter: Any, entity: EntityPlan) -> str:
+        """Move dimension text while checking that measured geometry remains unchanged."""
         if len(entity.target_handles) != 1:
             raise ValueError("layout_only requires exactly one target handle")
         position = entity.coordinates.get("text_position")

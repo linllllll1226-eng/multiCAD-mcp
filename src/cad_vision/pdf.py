@@ -125,7 +125,7 @@ def extract_vector_pdf(
 ) -> dict[str, Any]:
     """Extract vector paths, text, and dimension candidates without raster OCR."""
     try:
-        import fitz  # type: ignore[import-untyped]
+        import fitz
     except ImportError as exc:  # pragma: no cover - dependency-specific
         raise RuntimeError(
             "Vector PDF analysis requires the optional 'vision' dependencies"

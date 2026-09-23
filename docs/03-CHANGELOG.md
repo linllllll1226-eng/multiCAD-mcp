@@ -1,3 +1,11 @@
+# v0.5.0
+
+- Package dashboard/UI/config/profile assets and a guarded console entry point.
+- Support FastMCP 4 / MCP SDK 2 with both STDIO protocol eras verified.
+- Enforce zero mypy errors, 80% docstrings and critical-module coverage in CI.
+- Include native dimension verification, isolated lifecycle acceptance and audit text fixes.
+- Keep HTTP experimental and distinguish protocol support from optional MCP features.
+
 # Changelog
 
 All notable changes to multiCAD-mcp will be documented in this file.

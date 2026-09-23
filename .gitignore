@@ -63,3 +63,9 @@ data/audit_reports/
 # Local operator notes and timestamped script backups
 /AUTOCAD_CODEX_SETUP_SUMMARY.md
 scripts/Start-CAD-AI.ps1.bak-*
+
+# Build and quality reports
+build/
+dist/
+coverage.json
+coverage.xml

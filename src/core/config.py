@@ -110,7 +110,9 @@ class ConfigManager:
         if (project_root / "config.json").exists():
             return project_root / "config.json"
 
-        return None
+        from cad_runtime import resource_path
+
+        return resource_path("config.json")
 
     @staticmethod
     def _get_default_config() -> ServerConfig:

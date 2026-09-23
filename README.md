@@ -1,4 +1,4 @@
-# multiCAD-mcp v0.4
+# multiCAD-mcp v0.5
 
 **English** | [简体中文](README_zh-CN.md)
 
@@ -10,8 +10,8 @@
 
 - **Primary verified target:** AutoCAD 2022 on Windows (`COM 24.1`).
 - **MCP surface:** 25 tools: 7 upstream unified CAD tools plus 18 guarded workflow, memory, task, and vision tools.
-- **Tests:** 293 unit tests, including background rendering, source completeness, required-annotation gates, OCR recovery, close-line preservation, and HWND capture checks.
-- **Quality gate:** full Ruff lint/format checks and release-hygiene validation.
+- **Tests:** Windows CI verifies geometry, rollback, source completeness, packaging and MCP protocol behavior; see the current CI run for counts.
+- **Quality gates:** Ruff, mypy, 80% docstrings, critical-module coverage and release hygiene.
 - **Transport:** local STDIO; no network listener is required for Codex.
 - **Safe entry point:** `src/server_memory.py`.
 - **Legacy entry point:** `src/server.py` (retained for upstream compatibility, without the complete guarded workflow).
@@ -154,7 +154,8 @@ cad_memory_delete, cad_save_drawing_profile, cad_load_drawing_profile,
 cad_plan_validate, cad_execute_plan, cad_verify_execution,
 cad_list_ai_tasks, cad_get_task_entities, cad_get_entity_provenance,
 cad_commit_preview_task, cad_revert_ai_task,
-cad_analyze_source, cad_vision_capabilities
+cad_analyze_source, cad_vision_capabilities,
+cad_render_task_audit, cad_capture_live_window
 ```
 
 ## Test and quality checks
@@ -193,3 +194,7 @@ The Windows CI workflow runs the test suite on Python 3.10, 3.11, and 3.12.
 ## License and attribution
 
 Apache-2.0. Preserve the upstream copyright, license, and attribution when redistributing this derivative work.
+
+## Release and compatibility / 发布与兼容性
+
+See [wheel installation](docs/RELEASE.md), [MCP compatibility matrix](docs/MCP_COMPATIBILITY.md), and [enforced quality gates](docs/QUALITY_GATES.md).

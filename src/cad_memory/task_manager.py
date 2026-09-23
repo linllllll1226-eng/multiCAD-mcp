@@ -35,6 +35,7 @@ REVERT_LAYER = "AI_REVERTED"
 
 
 def _canonical_hash(value: Any) -> str:
+    """Hash a deterministically serialized evidence payload."""
     encoded = json.dumps(
         value,
         ensure_ascii=False,
@@ -46,6 +47,7 @@ def _canonical_hash(value: Any) -> str:
 
 
 def _file_sha256(path: str) -> str:
+    """Stream a local evidence file into its SHA-256 digest."""
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -54,6 +56,7 @@ def _file_sha256(path: str) -> str:
 
 
 def _entity_snapshot_hash(records: list[dict[str, Any]]) -> str:
+    """Hash actual entity states in stable handle order."""
     snapshots = [
         {
             "handle": str(record.get("handle", "")),
@@ -66,6 +69,7 @@ def _entity_snapshot_hash(records: list[dict[str, Any]]) -> str:
 
 
 def _source_audit_required(task: dict[str, Any]) -> bool:
+    """Identify reconstruction tasks that require source completeness evidence."""
     provenance = (task.get("plan_data") or {}).get("source_provenance") or {}
     return bool(
         provenance.get("kind") == "image_pdf_reconstruction" or provenance.get("manifest_required")
@@ -73,6 +77,7 @@ def _source_audit_required(task: dict[str, Any]) -> bool:
 
 
 def _geometry_signature(entity: Any) -> dict[str, Any]:
+    """Select geometric and measurement properties protected during layer changes."""
     state = read_entity_state(entity)
     # Layer changes may legitimately alter effective linetype and can cause
     # AutoCAD to recompute dimension text placement. Neither is model
@@ -111,6 +116,7 @@ def _geometry_values_equal(left: Any, right: Any, *, tolerance: float = 1e-9) ->
 
 
 def _get_layer(document: Any, name: str) -> Any:
+    """Resolve an existing layer or reject an unavailable target."""
     try:
         return document.Layers.Item(name)
     except Exception as exc:
@@ -118,6 +124,7 @@ def _get_layer(document: Any, name: str) -> Any:
 
 
 def _ensure_revert_layer(document: Any) -> Any:
+    """Create or configure the task isolation layer for an authorized revert."""
     try:
         layer = document.Layers.Item(REVERT_LAYER)
     except Exception:
@@ -134,6 +141,7 @@ def _ensure_revert_layer(document: Any) -> Any:
 
 
 def _normalized_windows_path(value: str) -> str:
+    """Normalize separators and case for Windows drawing path comparisons."""
     return ntpath.normcase(ntpath.normpath(str(value or "").strip()))
 
 
@@ -152,6 +160,7 @@ def _identity_matches(record: dict[str, Any], document: Any) -> bool:
 
 
 def _assert_document_identity(record: dict[str, Any], document: Any, *, source: str) -> None:
+    """Reject records belonging to a different active drawing."""
     if not _identity_matches(record, document):
         current = document_identity(document)
         recorded_label = record.get("drawing_full_name") or record.get("drawing_name")
@@ -694,6 +703,7 @@ class TaskTrackingManager:
     def _load_owned_entities(
         self, document: Any, task: dict[str, Any]
     ) -> list[tuple[dict[str, Any], Any, dict[str, Any]]]:
+        """Resolve created task objects and validate their XData ownership and drawing."""
         task_id = str(task["task_id"])
         rows = [
             row
@@ -723,6 +733,7 @@ class TaskTrackingManager:
     def _snapshot(
         owned: list[tuple[dict[str, Any], Any, dict[str, Any]]],
     ) -> dict[str, dict[str, Any]]:
+        """Capture layers and protected geometry before task presentation changes."""
         return {
             row["handle"]: {
                 "layer": str(entity.Layer),
@@ -736,6 +747,7 @@ class TaskTrackingManager:
         owned: list[tuple[dict[str, Any], Any, dict[str, Any]]],
         snapshots: dict[str, dict[str, Any]],
     ) -> None:
+        """Reject task changes that alter captured geometry beyond float tolerance."""
         for row, entity, _metadata in owned:
             if not _geometry_values_equal(
                 _geometry_signature(entity),

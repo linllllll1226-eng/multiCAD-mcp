@@ -113,7 +113,7 @@ npx -y @modelcontextprotocol/inspector uv run python src/server_memory.py
 uv run ruff check src tests scripts --select E9,F63,F7,F82
 ```
 
-Browse to `http://localhost:3000` to test tools interactively.
+Browse to `http://localhost:8888` to test tools interactively.
 
 ### Test connection directly
 

@@ -30,7 +30,31 @@ jobs:
         run: uv sync --frozen --extra dev --extra vision --extra docs
 
       - name: Run tests
-        run: uv run pytest -q -p no:cacheprovider
+        run: uv run pytest -q -p no:cacheprovider --cov=src --cov-report=json --cov-report=xml
+
+      - name: Enforce critical module coverage
+        run: uv run python scripts/check_coverage_gates.py
+
+      - name: Check all project types
+        run: uv run mypy src
+
+      - name: Enforce docstring coverage
+        run: uv run interrogate src
+
+      - name: Upload coverage evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.python-version }}
+          path: |
+            coverage.json
+            coverage.xml
+
+      - name: Build distributable artifacts
+        run: uv build --no-sources
+
+      - name: Verify clean wheel installation
+        run: uv run python scripts/smoke_wheel.py --wheel dist/multicad_mcp-0.5.0-py3-none-any.whl --work-dir "${{ runner.temp }}/multicad-wheel-smoke"
 
       - name: Check repository hygiene
         run: uv run python scripts/check_repository_hygiene.py
