@@ -1,0 +1,425 @@
+{
+  "schema_version": 1,
+  "corpus_status": "pilot_partial_labels_not_representative",
+  "cases": [
+    {
+      "id": "hole",
+      "file": "hole.png",
+      "source_sha256": "fc3f6a8b0c9235b331d9e9306a3ed811f01f25ab51cea85731a41591e46e60ab",
+      "coordinate_space": "source_pixels",
+      "tolerance": 5,
+      "complete_annotation": false,
+      "label_scope": "Manually reviewed selected boundaries and visible text; hatching, leaders, freeform curves and some dimensions remain unlabelled.",
+      "geometry": [
+        {
+          "id": "wall_left",
+          "kind": "line",
+          "start": [
+            122,
+            76
+          ],
+          "end": [
+            122,
+            409
+          ]
+        },
+        {
+          "id": "wall_right",
+          "kind": "line",
+          "start": [
+            233,
+            76
+          ],
+          "end": [
+            233,
+            409
+          ]
+        },
+        {
+          "id": "bottom",
+          "kind": "line",
+          "start": [
+            122,
+            409
+          ],
+          "end": [
+            233,
+            409
+          ]
+        },
+        {
+          "id": "tip_left",
+          "kind": "line",
+          "start": [
+            122,
+            409
+          ],
+          "end": [
+            177,
+            442
+          ]
+        },
+        {
+          "id": "tip_right",
+          "kind": "line",
+          "start": [
+            177,
+            442
+          ],
+          "end": [
+            233,
+            409
+          ]
+        },
+        {
+          "id": "thread_left",
+          "kind": "line",
+          "start": [
+            112,
+            76
+          ],
+          "end": [
+            112,
+            311
+          ]
+        },
+        {
+          "id": "thread_right",
+          "kind": "line",
+          "start": [
+            243,
+            76
+          ],
+          "end": [
+            243,
+            311
+          ]
+        },
+        {
+          "id": "thread_end",
+          "kind": "line",
+          "start": [
+            112,
+            311
+          ],
+          "end": [
+            243,
+            311
+          ]
+        }
+      ],
+      "texts": [
+        {
+          "text": "M10"
+        },
+        {
+          "text": "18"
+        },
+        {
+          "text": "25.50"
+        }
+      ],
+      "dimensions": [
+        {
+          "kind": "thread",
+          "value": "M10"
+        },
+        {
+          "kind": "linear",
+          "value": 18
+        },
+        {
+          "kind": "linear",
+          "value": 25.5
+        }
+      ],
+      "close_line_pairs": [
+        [
+          "wall_left",
+          "thread_left"
+        ],
+        [
+          "wall_right",
+          "thread_right"
+        ]
+      ]
+    },
+    {
+      "id": "section",
+      "file": "section.svg",
+      "source_sha256": "825eabd53090ddd1a1763743f0bc8b5880142e3f6b2aef57b8df188c75bc6b1c",
+      "coordinate_space": "source_pixels",
+      "tolerance": 5,
+      "complete_annotation": false,
+      "label_scope": "Manually reviewed selected boundaries and visible text; hatching, leaders, freeform curves and some dimensions remain unlabelled.",
+      "geometry": [
+        {
+          "id": "flange_top",
+          "kind": "line",
+          "start": [
+            19,
+            10
+          ],
+          "end": [
+            149,
+            10
+          ]
+        },
+        {
+          "id": "flange_right",
+          "kind": "line",
+          "start": [
+            149,
+            10
+          ],
+          "end": [
+            149,
+            210
+          ]
+        },
+        {
+          "id": "flange_bottom",
+          "kind": "line",
+          "start": [
+            149,
+            210
+          ],
+          "end": [
+            19,
+            210
+          ]
+        },
+        {
+          "id": "shaft_top",
+          "kind": "line",
+          "start": [
+            149,
+            40
+          ],
+          "end": [
+            394,
+            40
+          ]
+        },
+        {
+          "id": "chamfer_top",
+          "kind": "line",
+          "start": [
+            394,
+            40
+          ],
+          "end": [
+            399,
+            45
+          ]
+        },
+        {
+          "id": "shaft_end",
+          "kind": "line",
+          "start": [
+            399,
+            45
+          ],
+          "end": [
+            399,
+            175
+          ]
+        },
+        {
+          "id": "chamfer_bottom",
+          "kind": "line",
+          "start": [
+            399,
+            175
+          ],
+          "end": [
+            394,
+            180
+          ]
+        },
+        {
+          "id": "shaft_bottom",
+          "kind": "line",
+          "start": [
+            394,
+            180
+          ],
+          "end": [
+            149,
+            180
+          ]
+        },
+        {
+          "id": "outer",
+          "kind": "circle",
+          "center": [
+            294.016674,
+            110.016671
+          ],
+          "radius": 35
+        },
+        {
+          "id": "inner",
+          "kind": "circle",
+          "center": [
+            294,
+            110
+          ],
+          "radius": 25
+        }
+      ],
+      "texts": [],
+      "dimensions": [],
+      "close_line_pairs": []
+    },
+    {
+      "id": "turned_part",
+      "file": "bracket.png",
+      "source_sha256": "efa145e832fbea3e90616079cabf2d5156fc3ef4e825179cbb7cfd40eb6e6396",
+      "coordinate_space": "source_pixels",
+      "tolerance": 8,
+      "complete_annotation": false,
+      "label_scope": "Manually reviewed selected boundaries and visible text; hatching, leaders, freeform curves and some dimensions remain unlabelled.",
+      "geometry": [
+        {
+          "id": "upper",
+          "kind": "line",
+          "start": [
+            238,
+            417
+          ],
+          "end": [
+            797,
+            417
+          ]
+        },
+        {
+          "id": "left",
+          "kind": "line",
+          "start": [
+            238,
+            417
+          ],
+          "end": [
+            238,
+            951
+          ]
+        },
+        {
+          "id": "lower",
+          "kind": "line",
+          "start": [
+            238,
+            951
+          ],
+          "end": [
+            797,
+            951
+          ]
+        },
+        {
+          "id": "outer",
+          "kind": "circle",
+          "center": [
+            1713,
+            684
+          ],
+          "radius": 316
+        },
+        {
+          "id": "inner",
+          "kind": "circle",
+          "center": [
+            1713,
+            684
+          ],
+          "radius": 268
+        }
+      ],
+      "texts": [
+        {
+          "text": "26"
+        },
+        {
+          "text": "22"
+        },
+        {
+          "text": "10"
+        },
+        {
+          "text": "3"
+        },
+        {
+          "text": "3"
+        },
+        {
+          "text": "22"
+        },
+        {
+          "text": "12"
+        },
+        {
+          "text": "19"
+        },
+        {
+          "text": "26"
+        },
+        {
+          "text": "5"
+        },
+        {
+          "text": "A"
+        },
+        {
+          "text": "A"
+        },
+        {
+          "text": "A-A"
+        }
+      ],
+      "dimensions": [
+        {
+          "kind": "linear",
+          "value": 26
+        },
+        {
+          "kind": "linear",
+          "value": 22
+        },
+        {
+          "kind": "linear",
+          "value": 10
+        },
+        {
+          "kind": "linear",
+          "value": 3
+        },
+        {
+          "kind": "linear",
+          "value": 3
+        },
+        {
+          "kind": "linear",
+          "value": 22
+        },
+        {
+          "kind": "linear",
+          "value": 12
+        },
+        {
+          "kind": "linear",
+          "value": 19
+        },
+        {
+          "kind": "linear",
+          "value": 26
+        },
+        {
+          "kind": "linear",
+          "value": 5
+        }
+      ],
+      "close_line_pairs": []
+    }
+  ]
+}

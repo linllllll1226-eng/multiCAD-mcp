@@ -38,6 +38,16 @@ jobs:
       - name: Check all project types
         run: uv run mypy src
 
+      - name: Measure public real-drawing pilot and reject regressions
+        run: uv run python scripts/benchmark_real_drawings.py --output "${{ runner.temp }}/real-drawing-pilot" --check-baseline tests/fixtures/real_drawings/baseline.json
+
+      - name: Upload real-drawing pilot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-drawing-pilot-${{ matrix.python-version }}
+          path: ${{ runner.temp }}/real-drawing-pilot
+
       - name: Enforce docstring coverage
         run: uv run interrogate src
 
