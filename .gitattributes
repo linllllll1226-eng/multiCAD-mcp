@@ -1,0 +1,2 @@
+# Preserve downloaded corpus bytes for source identity checks on Windows.
+tests/fixtures/real_drawings/*.svg -text
