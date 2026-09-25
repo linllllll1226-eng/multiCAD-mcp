@@ -110,10 +110,60 @@ def test_close_line_missing_is_not_necessarily_merge():
     assert score_case(case, prediction)["close_line_merge_candidate_rate"] == 1
 
 
-@pytest.mark.parametrize("key", ["geometry", "texts", "dimensions"])
+@pytest.mark.parametrize("key", ["geometry", "texts", "dimensions", "required_annotations"])
 def test_malformed_predictions_rejected(key):
     """Invalid prediction records must not accidentally pass or be omitted."""
     case, prediction = fixture()
     prediction[key] = [None]
     with pytest.raises(ValueError):
+        score_case(case, prediction)
+
+
+def test_missing_required_annotation_rejects_completion():
+    """Matched geometry and dimensions cannot compensate for an omitted callout."""
+    case, prediction = fixture()
+    case["required_annotations"] = [{"text": "去毛刺 / DEBURR", "page": 1}]
+    result = score_case(case, prediction)
+    assert result["false_pass"]
+    assert result["metrics"]["required_annotations"]["missing_indices"] == [0]
+    prediction["required_annotations"] = [{"text": "去毛刺 / DEBURR", "page": 1}]
+    assert score_case(case, prediction)["recognition_complete"]
+
+
+@pytest.mark.parametrize("key", ["geometry", "texts", "dimensions", "required_annotations"])
+@pytest.mark.parametrize("page", [None, 2])
+def test_cross_page_predictions_never_satisfy_labels(key, page):
+    """Identical content on another page is not evidence for the labelled page."""
+    case, prediction = fixture()
+    if key == "required_annotations":
+        case[key] = [{"text": "DEBURR"}]
+        prediction[key] = [{"text": "DEBURR"}]
+    case[key][0]["page"] = 1
+    if page is not None:
+        prediction[key][0]["page"] = page
+    assert score_case(case, prediction)["false_pass"]
+
+
+@pytest.mark.parametrize("page", [True, 0, -1, 1.5, "1"])
+def test_invalid_page_provenance_is_rejected(page):
+    """Boolean, fractional and nonpositive pages cannot alias page one."""
+    case, prediction = fixture()
+    prediction["geometry"][0]["page"] = page
+    with pytest.raises(ValueError, match="positive integer"):
+        score_case(case, prediction)
+
+
+def test_invalid_labels_and_close_pairs_are_rejected():
+    """Ambiguous ids and malformed pairs must not inflate completeness scores."""
+    case, prediction = fixture()
+    case["geometry"] *= 2
+    with pytest.raises(ValueError, match="unique"):
+        score_case(case, prediction)
+    case, prediction = fixture()
+    case["close_line_pairs"] = [["edge", "missing"]]
+    with pytest.raises(ValueError, match="distinct"):
+        score_case(case, prediction)
+    case["close_line_pairs"] = []
+    case["required_annotations"] = [{"text": ""}]
+    with pytest.raises(ValueError, match="nonempty"):
         score_case(case, prediction)

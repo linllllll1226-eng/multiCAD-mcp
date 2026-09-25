@@ -21,9 +21,16 @@ def _point(value: object) -> tuple[float, float] | None:
     return float(value[0]), float(value[1])
 
 
+def _same_page(expected: dict, actual: dict) -> bool:
+    """Require the labelled page; missing provenance cannot satisfy a page label."""
+    return "page" not in expected or (
+        type(actual.get("page")) is int and actual["page"] == expected["page"]
+    )
+
+
 def geometry_matches(expected: dict, actual: dict, tolerance: float) -> bool:
     """Compare geometry by coordinates, allowing reversed line endpoints."""
-    if expected.get("kind") != actual.get("kind"):
+    if not _same_page(expected, actual) or expected.get("kind") != actual.get("kind"):
         return False
     kind = expected.get("kind")
     if kind == "line":
@@ -72,7 +79,7 @@ def geometry_matches(expected: dict, actual: dict, tolerance: float) -> bool:
 
 def dimension_matches(expected: dict, actual: dict) -> bool:
     """Keep dimension kind, numeric value and specified units/qualifiers distinct."""
-    if expected.get("kind") != actual.get("kind"):
+    if not _same_page(expected, actual) or expected.get("kind") != actual.get("kind"):
         return False
     left, right = expected.get("value"), actual.get("value")
     if (
@@ -129,16 +136,40 @@ def score_case(case: dict, prediction: dict) -> dict:
     tolerance = float(case.get("tolerance", 3.0))
     if not math.isfinite(tolerance) or tolerance <= 0:
         raise ValueError("tolerance must be positive and finite")
+    categories = ("geometry", "texts", "dimensions", "required_annotations")
+    for key in categories:
+        for name, records in (("case", case.get(key, [])), ("prediction", prediction.get(key, []))):
+            if not isinstance(records, list) or any(not isinstance(item, dict) for item in records):
+                raise ValueError(f"{name} {key} must be a list of objects")
+            if any(
+                "page" in item and (type(item["page"]) is not int or item["page"] < 1)
+                for item in records
+            ):
+                raise ValueError(f"{name} {key} page must be a positive integer")
+        if key in {"texts", "required_annotations"} and any(
+            not isinstance(item.get("text"), str) or not item["text"].strip()
+            for item in case.get(key, [])
+        ):
+            raise ValueError(f"case {key} must contain nonempty text")
+    geometry_ids = [item.get("id") for item in case.get("geometry", [])]
+    if any(not isinstance(value, str) or not value for value in geometry_ids) or len(
+        set(geometry_ids)
+    ) != len(geometry_ids):
+        raise ValueError("geometry labels require unique nonempty ids")
+    pairs = case.get("close_line_pairs", [])
+    if not isinstance(pairs, list) or any(
+        not isinstance(pair, list)
+        or len(pair) != 2
+        or any(not isinstance(value, str) or value not in geometry_ids for value in pair)
+        or pair[0] == pair[1]
+        for pair in pairs
+    ):
+        raise ValueError("close-line pairs must reference two distinct geometry labels")
     binding = (
         prediction.get("source_sha256") == case["source_sha256"]
         and prediction.get("case_id") == case["id"]
         and prediction.get("coordinate_space") == case["coordinate_space"]
     )
-    for key in ("geometry", "texts", "dimensions"):
-        if not isinstance(prediction.get(key, []), list):
-            raise ValueError(f"prediction {key} must be a list")
-        if any(not isinstance(item, dict) for item in prediction.get(key, [])):
-            raise ValueError(f"prediction {key} entries must be objects")
     geometry = match_records(
         case.get("geometry", []),
         prediction.get("geometry", []),
@@ -150,15 +181,32 @@ def score_case(case: dict, prediction: dict) -> dict:
     texts = match_records(
         case.get("texts", []),
         prediction.get("texts", []),
-        lambda a, b: isinstance(b.get("text"), str) and _text(a["text"]) == _text(b["text"]),
+        lambda a, b: (
+            _same_page(a, b)
+            and isinstance(b.get("text"), str)
+            and _text(a["text"]) == _text(b["text"])
+        ),
     )
-    groups = {"geometry": geometry, "typed_dimensions": dimensions, "text": texts}
+    annotations = match_records(
+        case.get("required_annotations", []),
+        prediction.get("required_annotations", []),
+        lambda a, b: (
+            _same_page(a, b)
+            and isinstance(b.get("text"), str)
+            and _text(a["text"]) == _text(b["text"])
+        ),
+    )
+    groups = {
+        "geometry": geometry,
+        "typed_dimensions": dimensions,
+        "text": texts,
+        "required_annotations": annotations,
+    }
     if not case.get("complete_annotation", False):
         for group in groups.values():
             group["precision"] = None
     ids = {index: item["id"] for index, item in enumerate(case.get("geometry", []))}
     matched_ids = {ids[pair[0]] for pair in geometry["pairs"]}
-    pairs = case.get("close_line_pairs", [])
     merged_or_missing = sum(not set(pair) <= matched_ids for pair in pairs)
     total = sum(group["expected"] for group in groups.values())
     correct = sum(group["matched"] for group in groups.values())

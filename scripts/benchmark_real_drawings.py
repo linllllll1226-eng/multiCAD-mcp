@@ -129,7 +129,9 @@ def evaluate(case, source, output):
     raw = analyze_source(str(source), use_cache=False, include_samples=True, ocr_policy="auto")
     analysis = raw["analysis"]
     geometry = [
-        item for page in analysis.get("pages", []) for item in page.get("geometry_samples", [])
+        {**item, "page": page["page"]}
+        for page in analysis.get("pages", [])
+        for item in page.get("geometry_samples", [])
     ]
     for x1, y1, x2, y2 in analysis.get("line_samples", []):
         geometry.append({"kind": "line", "start": [x1, y1], "end": [x2, y2]})
@@ -147,12 +149,12 @@ def evaluate(case, source, output):
         "detector_deskewed_pixels" if source.suffix != ".pdf" else "pdf_points"
     )
     texts = [
-        {"text": text}
+        {"text": text, "page": page["page"]}
         for page in analysis.get("pages", [])
         for text in page.get("text_samples", [])
     ]
     texts += [
-        {"text": item["text"]}
+        {"text": item["text"], "page": item["page"]}
         for item in analysis.get("ocr", {}).get("text_samples", [])
         if isinstance(item, dict) and isinstance(item.get("text"), str)
     ]
@@ -163,6 +165,7 @@ def evaluate(case, source, output):
         "geometry": geometry,
         "texts": texts,
         "dimensions": analysis.get("dimensions", []),
+        "required_annotations": [],
         "claimed_complete": False,
         "truncated": True,
         "stage": "source_analysis",

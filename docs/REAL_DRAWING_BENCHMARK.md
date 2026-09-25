@@ -25,6 +25,15 @@ and any failure to reject a deliberately false completion claim.
 - Geometry, text and typed dimensions have separate matched/expected counts and
   recall. Precision is null for partial labels, because unlabelled predictions
   cannot fairly be called false positives.
+- Required annotations are scored separately from ordinary text: a missing
+  mandatory note rejects completeness even when every geometry and dimension
+  matches. Case and prediction records use `required_annotations` with `text`
+  and an optional one-based `page`. The pilot does not infer mandatory notes;
+  its predictions leave that category empty.
+- A label carrying `page` can only match evidence carrying the same page.
+  Identical coordinates, numerals or notes on another page cannot substitute.
+  Missing page provenance fails matching; invalid page numbers, duplicate
+  geometry label IDs and invalid close-line references reject the input.
 - Close-line loss counts a pair with either member unmatched. The separately
   named merge-candidate rate counts a shared candidate compatible with both
   labels. It is not proof of the detector's internal merge operation.
