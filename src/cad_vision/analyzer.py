@@ -20,7 +20,7 @@ from .image import analyze_image_geometry
 from .ocr import extract_ocr, ocr_capabilities
 from .pdf import extract_vector_pdf
 
-PIPELINE_VERSION = "1.4.0"
+PIPELINE_VERSION = "1.5.0"
 SUPPORTED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 OCR_POLICIES = {"off", "auto", "force"}
 OCR_RUNTIME_PROFILE = {
@@ -36,6 +36,7 @@ _SAMPLE_KEYS = {
     "circle_samples",
     "close_parallel_pairs",
     "vector_samples",
+    "geometry_samples",
     "text_samples",
     "image_samples",
 }

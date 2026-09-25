@@ -1,0 +1,10 @@
+{
+  "scope": "Pilot regression floors only; not production reconstruction thresholds",
+  "minimum_matched": {
+    "hole": {"geometry": 1},
+    "hole_skew_blur": {"geometry": 1},
+    "hole_hybrid": {"text": 2},
+    "section": {"geometry": 10},
+    "turned_part": {"geometry": 2}
+  }
+}

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .dimensions import parse_dimension_text
+from .vector_geometry import extract_geometry
 
 
 def _rect(rect: Any) -> list[float]:
@@ -139,11 +140,13 @@ def extract_vector_pdf(
     ocr_targets: list[dict[str, Any]] = []
 
     with fitz.open(path) as document:
+        total_pages = len(document)
         page_count = min(len(document), max_pages)
         for page_number in range(page_count):
             page = document[page_number]
             canonical_page_rect = _canonical_page_rect(page)
             drawings = page.get_drawings()
+            geometry = extract_geometry(drawings)
             words = page.get_text("words")
             text_lines = _text_lines(page)
             image_regions = _image_regions(page)
@@ -240,10 +243,12 @@ def extract_vector_pdf(
                 "raster_coverage_ratio": round(raster_coverage, 6),
                 "ocr_recommendation": ocr_recommendation,
                 "ocr_reason": recommendation_reason,
+                **{key: value for key, value in geometry.items() if key != "geometry_samples"},
             }
             if target_regions:
                 page_result["ocr_regions"] = target_regions
             if include_samples:
+                page_result["geometry_samples"] = geometry["geometry_samples"]
                 page_result["vector_samples"] = samples
                 page_result["text_samples"] = [item["text"] for item in text_lines[:20]]
                 page_result["image_samples"] = [
@@ -254,6 +259,8 @@ def extract_vector_pdf(
     return {
         "mode": "vector_pdf",
         "page_count_analyzed": len(pages),
+        "page_count_total": total_pages,
+        "pages_truncated": len(pages) < total_pages,
         "vector_path_groups": total_paths,
         "vector_item_counts": dict(sorted(vector_item_counts.items())),
         "text_word_count": total_words,
