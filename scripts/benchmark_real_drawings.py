@@ -6,6 +6,7 @@ import argparse
 import copy
 import hashlib
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -17,47 +18,110 @@ from cad_vision.benchmark import score_case  # noqa: E402
 
 
 def transformed(geometry, matrix):
-    """Map independently labelled coordinates into the detector's deskewed frame."""
+    """Map labels through an orientation-preserving similarity in XY coordinates."""
+    if len(matrix) != 2 or any(len(row) != 3 for row in matrix):
+        raise ValueError("label transform must be a finite 2x3 similarity matrix")
+    if any(not math.isfinite(value) for row in matrix for value in row):
+        raise ValueError("label transform must be a finite 2x3 similarity matrix")
+    a, b, _ = matrix[0]
+    c, d, _ = matrix[1]
+    scale = math.hypot(a, c)
+    if (
+        scale <= 0
+        or not math.isclose(a, d, rel_tol=1e-9, abs_tol=1e-12)
+        or not math.isclose(b, -c, rel_tol=1e-9, abs_tol=1e-12)
+    ):
+        raise ValueError("label transform cannot shear, reflect or distort circles/arcs")
+    rotation = math.degrees(math.atan2(c, a))
     result = copy.deepcopy(geometry)
     for record in result:
         for key in ("start", "end", "center"):
             if key in record:
                 x, y = record[key]
                 record[key] = [float(row[0] * x + row[1] * y + row[2]) for row in matrix]
+        if record.get("kind") in {"circle", "arc"}:
+            record["radius"] = float(record["radius"] * scale)
+        if record.get("kind") == "arc":
+            for key in ("start_angle", "end_angle"):
+                record[key] = (record[key] + rotation) % 360
     return result
 
 
-def overlay(path, case, prediction, output):
-    """Render scientific expected/detected geometry overlays without changing inputs."""
-    import cv2
-    import fitz
-    import numpy as np
+def _draw_overlay(canvas, case, prediction, page_number):
+    """Draw only one page's evidence in its unrotated or deskewed XY frame."""
     from PIL import Image, ImageDraw
 
-    if path.suffix == ".pdf":
-        with fitz.open(path) as doc:
-            pix = doc[0].get_pixmap()
-            canvas = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-    else:
-        with Image.open(path) as source:
-            pixels = np.array(source.convert("RGB"))
-        height, width = pixels.shape[:2]
-        matrix = cv2.getRotationMatrix2D((width / 2, height / 2), prediction.get("deskew", 0), 1)
-        canvas = Image.fromarray(
-            cv2.warpAffine(pixels, matrix, (width, height), borderValue=(255, 255, 255))
-        )
+    source_height = canvas.height
+    framed = Image.new("RGB", (canvas.width, source_height + 32), "white")
+    framed.paste(canvas, (0, 0))
+    canvas = framed
     draw = ImageDraw.Draw(canvas)
     for records, color in [(prediction["geometry"], "#0088ff"), (case["geometry"], "#e00040")]:
         for item in records:
+            if item.get("page", 1) != page_number:
+                continue
             if item["kind"] == "line":
                 draw.line([tuple(item["start"]), tuple(item["end"])], fill=color, width=2)
-            elif item["kind"] == "circle":
+            elif item["kind"] in {"circle", "arc"}:
                 x, y = item["center"]
                 r = item["radius"]
-                draw.ellipse((x - r, y - r, x + r, y + r), outline=color, width=2)
-    draw.rectangle((0, 0, min(canvas.width, 410), 16), fill="white")
-    draw.text((3, 2), "Expected: red | detected: blue | PARTIAL LABELS", fill="black")
+                box = (x - r, y - r, x + r, y + r)
+                if item["kind"] == "circle":
+                    draw.ellipse(box, outline=color, width=2)
+                else:
+                    draw.arc(box, item["start_angle"], item["end_angle"], fill=color, width=2)
+    scope = "EXHAUSTIVE LABELS" if case.get("complete_annotation") is True else "PARTIAL LABELS"
+    draw.text((3, source_height + 2), "Expected:red Detected:blue", fill="black")
+    draw.text((3, source_height + 17), f"{scope} | p{page_number}", fill="black")
+    return canvas
+
+
+def overlay(path, case, prediction, output):
+    """Save page-separated overlays; never guess missing multi-page provenance."""
+    import fitz
+    from PIL import Image
+
+    def validate_pages(page_count):
+        """Reject records which would otherwise be drawn on an invented page."""
+        for item in case["geometry"] + prediction["geometry"]:
+            page = item.get("page", 1 if page_count == 1 else None)
+            if type(page) is not int or not 1 <= page <= page_count:
+                raise ValueError("Overlay geometry requires valid source page provenance")
+
+    if path.suffix.lower() == ".pdf":
+        outputs = []
+        with fitz.open(path) as doc:
+            validate_pages(len(doc))
+            for index, page in enumerate(doc):
+                # get_drawings() uses unrotated coordinates. Change only the
+                # in-memory display rotation; the source file is never saved.
+                page.set_rotation(0)
+                pix = page.get_pixmap(colorspace=fitz.csRGB, alpha=False)
+                canvas = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+                canvas = _draw_overlay(canvas, case, prediction, index + 1)
+                target = (
+                    output
+                    if len(doc) == 1
+                    else output.with_name(f"{output.stem}.page-{index + 1:03d}{output.suffix}")
+                )
+                canvas.save(target)
+                outputs.append(target)
+        return outputs
+
+    import cv2
+    import numpy as np
+
+    validate_pages(1)
+    with Image.open(path) as source:
+        pixels = np.array(source.convert("RGB"))
+    height, width = pixels.shape[:2]
+    matrix = cv2.getRotationMatrix2D((width / 2, height / 2), prediction.get("deskew", 0), 1)
+    canvas = Image.fromarray(
+        cv2.warpAffine(pixels, matrix, (width, height), borderValue=(255, 255, 255))
+    )
+    canvas = _draw_overlay(canvas, case, prediction, 1)
     canvas.save(output)
+    return [output]
 
 
 def prepare_cases(manifest, output):
@@ -146,7 +210,7 @@ def evaluate(case, source, output):
         )
     case["source_sha256"] = hashlib.sha256(source.read_bytes()).hexdigest()
     case["coordinate_space"] = (
-        "detector_deskewed_pixels" if source.suffix != ".pdf" else "pdf_points"
+        "detector_deskewed_pixels" if source.suffix.lower() != ".pdf" else "pdf_points"
     )
     texts = [
         {"text": text, "page": page["page"]}
@@ -183,6 +247,10 @@ def evaluate(case, source, output):
         "Partial ground truth; precision is unavailable.",
         "Bounded source-analysis samples; no complete reconstruction or CAD acceptance.",
     ]
+    result["overlays"] = [
+        path.name
+        for path in overlay(source, case, prediction, output / f"{case['id']}.overlay.png")
+    ]
     for suffix, value in [
         ("raw", raw),
         ("prediction", prediction),
@@ -192,7 +260,6 @@ def evaluate(case, source, output):
         (output / f"{case['id']}.{suffix}.json").write_text(
             json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8"
         )
-    overlay(source, case, prediction, output / f"{case['id']}.overlay.png")
     return result
 
 

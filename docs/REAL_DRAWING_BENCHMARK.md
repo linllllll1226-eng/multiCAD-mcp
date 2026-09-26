@@ -13,6 +13,22 @@ raw analyzer responses, predictions, transformed labels, per-case metrics and
 red/blue failure overlays. It uses no CAD connection. An external/private
 manifest can be supplied with `--manifest`; keep private results outside Git.
 
+Single-page inputs retain `<case>.overlay.png`. Multi-page PDFs produce
+`<case>.overlay.page-001.png`, `...page-002.png`, etc.; each case's metrics lists
+the generated filenames under `overlays`. PDF pages render in unrotated PDF
+coordinates to match vector evidence, including pages with display rotation.
+Geometry on multi-page inputs must carry explicit one-based `page` provenance;
+missing or out-of-range pages reject artifact generation rather than drawing
+unattributed evidence on page one. Source PDFs are never modified. Legends sit
+below the source image so they cannot hide boundaries at the top of the drawing.
+
+Overlays include arcs as well as lines and circles. Arc angles are degrees in
+the record's XY coordinate frame, increasing from the positive X axis toward
+positive Y (visually clockwise for image/PDF coordinates). Deskew and augmentation
+rotate arc angles together with their centers; uniform scaling changes radii.
+Shear, reflection and nonuniform scaling are rejected by the label transform
+because those need a different curve or sweep representation.
+
 `--require-complete` intentionally exits nonzero for this pilot. The ordinary
 command reports measurements, while `--check-baseline` rejects lost cases,
 source-binding errors, recognition regressions against modest reviewed floors,
@@ -22,6 +38,9 @@ and any failure to reject a deliberately false completion claim.
 
 - Matching is maximum one-to-one: duplicate predictions cannot satisfy multiple
   labels. Line endpoint order and wrapped arc angles are handled explicitly.
+  Alternating paths are iterative, so long chains of ambiguous matches do not
+  fail at Python's recursion limit. Candidate construction still compares all
+  label/prediction pairs; this is not an unbounded-memory scalability claim.
 - Geometry, text and typed dimensions have separate matched/expected counts and
   recall. Precision is null for partial labels, because unlabelled predictions
   cannot fairly be called false positives.

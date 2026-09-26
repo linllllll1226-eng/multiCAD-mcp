@@ -104,19 +104,34 @@ def match_records(expected: list, actual: list, matches: Any) -> dict:
     edges = [[j for j, item in enumerate(actual) if matches(label, item)] for label in expected]
     owners: dict[int, int] = {}
 
-    def augment(index: int, seen: set[int]) -> bool:
-        """Find an alternating path to a free prediction."""
-        for candidate in edges[index]:
+    def augment(index: int) -> bool:
+        """Find an alternating path without a recursion limit on drawing size."""
+        seen: set[int] = set()
+        parents: dict[int, tuple[int, int]] = {}
+        stack = [(index, iter(edges[index]))]
+        while stack:
+            label, candidates = stack[-1]
+            candidate = next(candidates, None)
+            if candidate is None:
+                stack.pop()
+                continue
             if candidate in seen:
                 continue
             seen.add(candidate)
-            if candidate not in owners or augment(owners[candidate], seen):
-                owners[candidate] = index
+            if candidate not in owners:
+                owners[candidate] = label
+                while label in parents:
+                    parent, previous = parents[label]
+                    owners[previous] = parent
+                    label = parent
                 return True
+            owner = owners[candidate]
+            parents[owner] = (label, candidate)
+            stack.append((owner, iter(edges[owner])))
         return False
 
     for index in range(len(expected)):
-        augment(index, set())
+        augment(index)
     matched = set(owners.values())
     count = len(owners)
     return {

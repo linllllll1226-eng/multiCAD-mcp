@@ -1,6 +1,7 @@
 """Prevent optimistic scores from incomplete, duplicated or unbound evidence."""
 
 from copy import deepcopy
+from itertools import permutations
 
 import pytest
 
@@ -77,6 +78,35 @@ def test_maximum_matching_avoids_greedy_order_bias():
     """A flexible first label must not steal the only match for the second."""
     result = match_records([0, 1], [0, 1], lambda a, b: a == 0 or b == 0)
     assert result["matched"] == 2
+
+
+def test_large_alternating_path_does_not_exhaust_python_stack():
+    """A crowded drawing can require reassigning over a thousand prior matches."""
+    count = 1200
+    result = match_records(
+        list(range(count)),
+        list(range(count)),
+        lambda label, candidate: (
+            candidate == 0 if label == count - 1 else candidate in (label, label + 1)
+        ),
+    )
+    assert result["matched"] == count
+    assert result["missing_indices"] == []
+    assert result["unmatched_prediction_indices"] == []
+    assert [count - 1, 0] in result["pairs"]
+
+
+def test_matching_agrees_with_exhaustive_small_graph_oracle():
+    """Check every 3x3 graph against independent exhaustive assignments."""
+    for mask in range(1 << 9):
+        edges = {(a, b) for a in range(3) for b in range(3) if mask & (1 << (a * 3 + b))}
+        best = max(
+            sum((label, candidate) in edges for label, candidate in enumerate(order))
+            for order in permutations(range(3))
+        )
+        result = match_records(list(range(3)), list(range(3)), lambda a, b: (a, b) in edges)
+        assert result["matched"] == best
+        assert all(tuple(pair) in edges for pair in result["pairs"])
 
 
 def test_wrong_dimension_semantics_fail():
