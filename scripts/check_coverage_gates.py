@@ -20,6 +20,9 @@ FLOORS = {
     "src/cad_vision/dimensions.py": 95,
     "src/cad_vision/pdf.py": 89,
     "src/cad_vision/ocr.py": 89,
+    "src/cad_vision/ocr_rotation.py": 90,
+    "src/cad_vision/benchmark.py": 90,
+    "src/cad_vision/corpus.py": 90,
 }
 
 

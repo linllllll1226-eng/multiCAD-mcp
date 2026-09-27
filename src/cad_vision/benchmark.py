@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 import unicodedata
 from typing import Any
 
@@ -25,6 +26,29 @@ def _same_page(expected: dict, actual: dict) -> bool:
     """Require the labelled page; missing provenance cannot satisfy a page label."""
     return "page" not in expected or (
         type(actual.get("page")) is int and actual["page"] == expected["page"]
+    )
+
+
+def _box(value: object) -> tuple[float, ...] | None:
+    """Accept finite ordered XY bounds used by independently placed text labels."""
+    if not isinstance(value, (list, tuple)) or len(value) != 4:
+        return None
+    if any(type(item) not in (int, float) or not math.isfinite(item) for item in value):
+        return None
+    if value[2] <= value[0] or value[3] <= value[1]:
+        return None
+    return tuple(float(item) for item in value)
+
+
+def _same_box(expected: dict, actual: dict, tolerance: float) -> bool:
+    """Require labelled location; equal text elsewhere is not interchangeable."""
+    if expected.get("bbox") is None:
+        return True
+    first, second = _box(expected["bbox"]), _box(actual.get("bbox"))
+    return (
+        first is not None
+        and second is not None
+        and all(abs(a - b) <= tolerance for a, b in zip(first, second))
     )
 
 
@@ -77,9 +101,13 @@ def geometry_matches(expected: dict, actual: dict, tolerance: float) -> bool:
     return False
 
 
-def dimension_matches(expected: dict, actual: dict) -> bool:
+def dimension_matches(expected: dict, actual: dict, tolerance: float = 3.0) -> bool:
     """Keep dimension kind, numeric value and specified units/qualifiers distinct."""
-    if not _same_page(expected, actual) or expected.get("kind") != actual.get("kind"):
+    if (
+        not _same_page(expected, actual)
+        or not _same_box(expected, actual, tolerance)
+        or expected.get("kind") != actual.get("kind")
+    ):
         return False
     left, right = expected.get("value"), actual.get("value")
     if (
@@ -148,6 +176,21 @@ def match_records(expected: list, actual: list, matches: Any) -> dict:
 
 def score_case(case: dict, prediction: dict) -> dict:
     """Score all labelled categories and reject incomplete or unbound evidence."""
+    if not isinstance(case, dict) or not isinstance(prediction, dict):
+        raise ValueError("case and prediction must be objects")
+    for key in ("id", "coordinate_space"):
+        if not isinstance(case.get(key), str) or not case[key].strip():
+            raise ValueError(f"case {key} must be a nonempty string")
+    digest = case.get("source_sha256")
+    if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+        raise ValueError("case source_sha256 must be a lowercase SHA-256 digest")
+    if "complete_annotation" in case and type(case["complete_annotation"]) is not bool:
+        raise ValueError("complete_annotation must be a boolean")
+    for key in ("claimed_complete", "truncated"):
+        if key in prediction and type(prediction[key]) is not bool:
+            raise ValueError(f"prediction {key} must be a boolean")
+    if type(case.get("tolerance", 3.0)) not in (int, float):
+        raise ValueError("tolerance must be a positive finite number")
     tolerance = float(case.get("tolerance", 3.0))
     if not math.isfinite(tolerance) or tolerance <= 0:
         raise ValueError("tolerance must be positive and finite")
@@ -161,6 +204,13 @@ def score_case(case: dict, prediction: dict) -> dict:
                 for item in records
             ):
                 raise ValueError(f"{name} {key} page must be a positive integer")
+            if any(
+                "needs_confirmation" in item and type(item["needs_confirmation"]) is not bool
+                for item in records
+            ):
+                raise ValueError("needs_confirmation must be a boolean")
+            if any(item.get("bbox") is not None and _box(item["bbox"]) is None for item in records):
+                raise ValueError("bbox must contain finite ordered coordinates")
         if key in {"texts", "required_annotations"} and any(
             not isinstance(item.get("text"), str) or not item["text"].strip()
             for item in case.get(key, [])
@@ -171,6 +221,21 @@ def score_case(case: dict, prediction: dict) -> dict:
         set(geometry_ids)
     ) != len(geometry_ids):
         raise ValueError("geometry labels require unique nonempty ids")
+    for item in case.get("geometry", []):
+        if not geometry_matches(item, item, tolerance):
+            raise ValueError("geometry labels must contain supported finite geometry")
+        if item["kind"] == "line" and _point(item["start"]) == _point(item["end"]):
+            raise ValueError("geometry labels must not contain zero-length lines")
+        if item["kind"] == "arc" and (item["end_angle"] - item["start_angle"]) % 360 == 0:
+            raise ValueError("arc labels require a nonzero sweep smaller than a full circle")
+    for item in case.get("dimensions", []):
+        if (
+            item.get("kind")
+            not in {"linear", "diameter", "radius", "angle", "thread", "count", "depth"}
+            or not dimension_matches(item, item)
+            or (isinstance(item.get("value"), str) and not item["value"].strip())
+        ):
+            raise ValueError("dimension labels require a supported kind and finite nonempty value")
     pairs = case.get("close_line_pairs", [])
     if not isinstance(pairs, list) or any(
         not isinstance(pair, list)
@@ -180,6 +245,14 @@ def score_case(case: dict, prediction: dict) -> dict:
         for pair in pairs
     ):
         raise ValueError("close-line pairs must reference two distinct geometry labels")
+    by_id = {item["id"]: item for item in case.get("geometry", [])}
+    pair_keys = [tuple(sorted(pair)) for pair in pairs]
+    if len(set(pair_keys)) != len(pair_keys) or any(
+        any(by_id[key]["kind"] != "line" for key in pair)
+        or by_id[pair[0]].get("page") != by_id[pair[1]].get("page")
+        for pair in pairs
+    ):
+        raise ValueError("close-line pairs must be unique lines on the same page")
     binding = (
         prediction.get("source_sha256") == case["source_sha256"]
         and prediction.get("case_id") == case["id"]
@@ -191,13 +264,16 @@ def score_case(case: dict, prediction: dict) -> dict:
         lambda a, b: geometry_matches(a, b, tolerance),
     )
     dimensions = match_records(
-        case.get("dimensions", []), prediction.get("dimensions", []), dimension_matches
+        case.get("dimensions", []),
+        prediction.get("dimensions", []),
+        lambda a, b: dimension_matches(a, b, tolerance),
     )
     texts = match_records(
         case.get("texts", []),
         prediction.get("texts", []),
         lambda a, b: (
             _same_page(a, b)
+            and _same_box(a, b, tolerance)
             and isinstance(b.get("text"), str)
             and _text(a["text"]) == _text(b["text"])
         ),
@@ -207,6 +283,7 @@ def score_case(case: dict, prediction: dict) -> dict:
         prediction.get("required_annotations", []),
         lambda a, b: (
             _same_page(a, b)
+            and _same_box(a, b, tolerance)
             and isinstance(b.get("text"), str)
             and _text(a["text"]) == _text(b["text"])
         ),
@@ -217,7 +294,7 @@ def score_case(case: dict, prediction: dict) -> dict:
         "text": texts,
         "required_annotations": annotations,
     }
-    if not case.get("complete_annotation", False):
+    if case.get("complete_annotation") is not True:
         for group in groups.values():
             group["precision"] = None
     ids = {index: item["id"] for index, item in enumerate(case.get("geometry", []))}
@@ -227,17 +304,22 @@ def score_case(case: dict, prediction: dict) -> dict:
     correct = sum(group["matched"] for group in groups.values())
     complete = bool(total) and correct == total
     stage = prediction.get("stage")
+    unconfirmed = sum(
+        item.get("needs_confirmation") is True
+        for key in categories
+        for item in prediction.get(key, [])
+    )
     recognition_complete = bool(
         binding
         and complete
         and case.get("complete_annotation") is True
         and prediction.get("truncated") is False
+        and unconfirmed == 0
         and all(not group["unmatched_prediction_indices"] for group in groups.values())
     )
     # This scorer cannot authenticate a CAD session. A JSON assertion of readback
     # must never manufacture saved/reopened DWG acceptance.
     collision_count = 0
-    by_id = {item["id"]: item for item in case.get("geometry", [])}
     for pair in pairs:
         if not set(pair) <= matched_ids and any(
             all(geometry_matches(by_id[item], candidate, tolerance) for item in pair)
@@ -248,6 +330,8 @@ def score_case(case: dict, prediction: dict) -> dict:
         "case_id": case["id"],
         "binding_valid": binding,
         "stage": stage,
+        "claimed_complete": prediction.get("claimed_complete") is True,
+        "unconfirmed_prediction_count": unconfirmed,
         "annotation_complete": case.get("complete_annotation", False),
         "metrics": groups,
         "labelled_completeness": correct / total if total else None,

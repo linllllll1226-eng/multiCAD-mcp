@@ -21,9 +21,10 @@ uv run python scripts/check_repository_hygiene.py
 ```
 
 Docstring coverage must remain at least 80%. The coverage checker independently
-enforces 12 safety-critical module floors: executor/validator 74%, verifier 83%,
+enforces 15 safety-critical module floors: executor/validator 74%, verifier 83%,
 task manager/acceptance 90%, receipts 88%, dimension-point reading 100%,
-audit renderer 79%, analyzer 90%, typed dimensions 95%, PDF/OCR 89%.
+audit renderer 79%, analyzer 90%, typed dimensions 95%, PDF/OCR 89%,
+OCR rotation evidence/real-drawing scorer/corpus validation 90%.
 Line coverage is computed from covered/executable line counts; an inflated or
 rounded percentage cannot hide a regression. Malformed, empty and non-finite
 measurements fail with actionable diagnostics.

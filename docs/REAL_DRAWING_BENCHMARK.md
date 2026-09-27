@@ -12,6 +12,8 @@ Run with a new output directory. The runner verifies source hashes, preserves
 raw analyzer responses, predictions, transformed labels, per-case metrics and
 red/blue failure overlays. It uses no CAD connection. An external/private
 manifest can be supplied with `--manifest`; keep private results outside Git.
+For recorded predictions and exhaustive local labels, use the separate
+[private evaluation workflow](PRIVATE_DRAWING_EVALUATION.md).
 
 Single-page inputs retain `<case>.overlay.png`. Multi-page PDFs produce
 `<case>.overlay.page-001.png`, `...page-002.png`, etc.; each case's metrics lists
@@ -53,6 +55,12 @@ and any failure to reject a deliberately false completion claim.
   Identical coordinates, numerals or notes on another page cannot substitute.
   Missing page provenance fails matching; invalid page numbers, duplicate
   geometry label IDs and invalid close-line references reject the input.
+- A text/dimension/required-note label carrying `bbox` also requires matching
+  source location within the case coordinate tolerance. Unconfirmed predictions
+  can count toward candidate recall but always reject recognition completeness.
+- Manifest and baseline parsing reject duplicate identities/JSON keys, nonfinite
+  values and malformed floor types. Augmentation is explicitly declared on the
+  source case; private cases are not augmented merely because their id is `hole`.
 - Close-line loss counts a pair with either member unmatched. The separately
   named merge-candidate rate counts a shared candidate compatible with both
   labels. It is not proof of the detector's internal merge operation.

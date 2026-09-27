@@ -42,6 +42,39 @@ another local directory.
   reported and length records remain unresolved.
 - `max_pages`: bounded to at most 50 pages.
 - `use_cache`: caches identical source/options combinations locally.
+- `ocr_rotation_angles`: optional additional counterclockwise passes from
+  `[90, 180, 270]`; defaults to no extra passes. `[90, 270]` can expose vertical
+  text candidates. These cost extra inference and require real-corpus evaluation
+  before being enabled by default. Invalid angles are rejected.
+
+Rotation probes apply to raster sources and selected PDF pages/regions. Their
+boxes are mapped back through the right-angle, crop, scale and page transforms.
+Equal text at the same source location is merged across passes with
+`orientation_observations` retained. Equal values at different locations or
+pages remain separate. Conflicting readings (for example `2` and `12`) are both
+kept with `needs_confirmation=true`; a rotation-only reading also needs review,
+even if two rotated passes agree. A missing/invalid text box requires review.
+These flags propagate to typed dimensions and survive a vector/OCR merge.
+The recognition-completeness scorer refuses unconfirmed predictions.
+
+Original image files and PDF files are never changed. Rotated temporary PNGs
+are removed after success or failure. Multi-frame raster input is rejected for
+rotation probes rather than silently selecting its first frame. The vision
+cache version is 1.6.0 and normalized rotation settings are part of the cache key.
+OCR output includes explicit text/dimension truncation flags; candidates remain
+bounded evidence rather than an exhaustive reconstruction.
+
+To compare the pilot with and without probes, use new directories:
+
+```powershell
+uv run python scripts/benchmark_real_drawings.py --output ../ocr-base --check-baseline tests/fixtures/real_drawings/baseline.json
+uv run python scripts/benchmark_real_drawings.py --output ../ocr-rotated --ocr-rotations 90 270 --check-baseline tests/fixtures/real_drawings/baseline.json
+```
+
+Compare raw text, location, typed-dimension matches, disagreements and latency.
+A higher candidate recall alone is not evidence that the selected dimensions
+are correct. This option's coordinate and conflict behavior is covered by pixel
+fixtures with simulated text; that is not a native-model accuracy measurement.
 
 Compact and detailed-sample requests share one canonical cache entry. The OCR
 pipeline also discards and rebuilds one corrupted native inference object after a

@@ -2,6 +2,7 @@
 
 import hashlib
 import importlib.util
+import json
 import math
 from copy import deepcopy
 from pathlib import Path
@@ -201,3 +202,47 @@ def test_evaluation_records_every_pdf_overlay(tmp_path):
     assert all((tmp_path / name).is_file() for name in result["overlays"])
     assert not result["recognition_complete"]
     assert result["live_dwg_acceptance"] == "not_evaluated"
+
+
+def test_private_hole_id_does_not_implicitly_create_augmentations(tmp_path):
+    pytest.importorskip("cv2")
+    from PIL import Image
+
+    source = tmp_path / "source.png"
+    Image.new("RGB", (180, 120), "white").save(source)
+    case = {
+        "id": "hole",
+        "file": source.name,
+        "coordinate_space": "source_pixels",
+        "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+        "geometry": [],
+    }
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"schema_version": 1, "cases": [case]}))
+    assert len(runner.prepare_cases(manifest, tmp_path)) == 1
+    case["augmentations"] = ["skew_blur", "hybrid_title"]
+    manifest.write_text(json.dumps({"schema_version": 1, "cases": [case]}))
+    cases = runner.prepare_cases(manifest, tmp_path)
+    assert [value["id"] for value, _ in cases] == ["hole", "hole_skew_blur", "hole_hybrid"]
+
+
+def test_generated_variant_id_collision_is_rejected_before_writing(tmp_path):
+    pytest.importorskip("cv2")
+    from PIL import Image
+
+    source = tmp_path / "source.png"
+    Image.new("RGB", (180, 120), "white").save(source)
+    case = {
+        "id": "hole",
+        "file": source.name,
+        "coordinate_space": "source_pixels",
+        "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+        "geometry": [],
+        "augmentations": ["skew_blur"],
+    }
+    collision = {**case, "id": "hole_skew_blur", "augmentations": []}
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"schema_version": 1, "cases": [case, collision]}))
+    with pytest.raises(ValueError, match="duplicate generated"):
+        runner.prepare_cases(manifest, tmp_path)
+    assert not (tmp_path / "hole_skew_blur.png").exists()

@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from cad_vision.analyzer import analyze_source, vision_capabilities  # noqa: E402
 from cad_vision.benchmark import score_case  # noqa: E402
+from cad_vision.corpus import check_baseline, load_manifest, read_json  # noqa: E402
 
 
 def transformed(geometry, matrix):
@@ -131,25 +132,35 @@ def prepare_cases(manifest, output):
     import numpy as np
     from PIL import Image, ImageFilter
 
-    data = json.loads(manifest.read_text("utf-8"))
+    bound_cases = load_manifest(manifest)
+    ids = {case["id"] for case, _ in bound_cases}
+    for case, _ in bound_cases:
+        variants = case.get("augmentations", [])
+        if not isinstance(variants, list) or any(
+            v not in ("skew_blur", "hybrid_title") for v in variants
+        ):
+            raise ValueError("unsupported benchmark augmentation recipe")
+        for recipe in variants:
+            identity = case["id"] + ("_skew_blur" if recipe == "skew_blur" else "_hybrid")
+            if identity in ids:
+                raise ValueError(f"duplicate generated case id: {identity}")
+            ids.add(identity)
     cases = []
-    for original in data["cases"]:
-        source = (manifest.parent / original["file"]).resolve()
-        if hashlib.sha256(source.read_bytes()).hexdigest() != original["source_sha256"]:
-            raise ValueError(f"Source hash mismatch: {source.name}")
+    for original, source in bound_cases:
         case = copy.deepcopy(original)
-        if source.suffix == ".svg":
+        if source.suffix.lower() == ".svg":
             target = output / (case["id"] + ".pdf")
             with fitz.open(source) as doc:
+                expected_size = tuple(doc[0].rect[2:])
                 target.write_bytes(doc.convert_to_pdf())
             # MuPDF's SVG conversion uses 1 point per SVG pixel.
             with fitz.open(target) as doc:
-                if tuple(doc[0].rect[2:]) != (430, 430):
+                if tuple(doc[0].rect[2:]) != expected_size:
                     raise ValueError("Unexpected SVG conversion scale")
             source = target
         cases.append((case, source))
-        if original["id"] == "hole":
-            target = output / "hole_skew_blur.png"
+        if "skew_blur" in original.get("augmentations", []):
+            target = output / (case["id"] + "_skew_blur.png")
             with Image.open(source) as im:
                 pixels = np.array(im.convert("RGB"))
                 width, height = im.size
@@ -159,7 +170,7 @@ def prepare_cases(manifest, output):
                 target, dpi=(150, 150)
             )
             variant = copy.deepcopy(case)
-            variant["id"] = "hole_skew_blur"
+            variant["id"] = case["id"] + "_skew_blur"
             variant["geometry"] = transformed(case["geometry"], matrix)
             variant["augmentation"] = {
                 "rotation_degrees": 3,
@@ -167,17 +178,22 @@ def prepare_cases(manifest, output):
                 "dpi_metadata": 150,
             }
             cases.append((variant, target))
-            target = output / "hole_hybrid.pdf"
+        if "hybrid_title" in original.get("augmentations", []):
+            target = output / (case["id"] + "_hybrid.pdf")
+            with Image.open(source) as image:
+                width, height = image.size
             doc = fitz.open()
-            page = doc.new_page(width=319, height=500)
-            page.insert_image(fitz.Rect(0, 0, 319, 453), filename=str(source))
-            page.insert_text((10, 475), "TEST / THROUGH HOLE", fontsize=10)
-            page.insert_text((10, 490), "测试图 / 通孔", fontname="china-s", fontsize=10)
+            page = doc.new_page(width=width, height=height + 47)
+            page.insert_image(fitz.Rect(0, 0, width, height), filename=str(source))
+            page.insert_text((10, height + 22), "TEST / THROUGH HOLE", fontsize=10)
+            page.insert_text((10, height + 37), "测试图 / 通孔", fontname="china-s", fontsize=10)
             doc.save(target)
             doc.close()
             variant = copy.deepcopy(case)
-            variant["id"] = "hole_hybrid"
-            variant["texts"] += [{"text": "TEST / THROUGH HOLE"}, {"text": "测试图 / 通孔"}]
+            variant["id"] = case["id"] + "_hybrid"
+            variant.setdefault("texts", []).extend(
+                [{"text": "TEST / THROUGH HOLE"}, {"text": "测试图 / 通孔"}]
+            )
             variant["augmentation"] = {
                 "hybrid_pdf": True,
                 "bilingual_title": "added, not original annotation",
@@ -186,11 +202,17 @@ def prepare_cases(manifest, output):
     return cases
 
 
-def evaluate(case, source, output):
+def evaluate(case, source, output, ocr_rotation_angles=None):
     """Score actual public analyzer output; absent vector coordinates stay absent."""
     import cv2
 
-    raw = analyze_source(str(source), use_cache=False, include_samples=True, ocr_policy="auto")
+    raw = analyze_source(
+        str(source),
+        use_cache=False,
+        include_samples=True,
+        ocr_policy="auto",
+        ocr_rotation_angles=ocr_rotation_angles,
+    )
     analysis = raw["analysis"]
     geometry = [
         {**item, "page": page["page"]}
@@ -218,7 +240,7 @@ def evaluate(case, source, output):
         for text in page.get("text_samples", [])
     ]
     texts += [
-        {"text": item["text"], "page": item["page"]}
+        {key: item[key] for key in ("text", "page", "bbox", "needs_confirmation") if key in item}
         for item in analysis.get("ocr", {}).get("text_samples", [])
         if isinstance(item, dict) and isinstance(item.get("text"), str)
     ]
@@ -272,16 +294,18 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--require-complete", action="store_true")
     parser.add_argument("--check-baseline", type=Path)
+    parser.add_argument("--ocr-rotations", type=int, nargs="*", choices=(90, 180, 270), default=[])
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
     results = [
-        evaluate(case, source, args.output)
+        evaluate(case, source, args.output, args.ocr_rotations)
         for case, source in prepare_cases(args.manifest, args.output)
     ]
     report = {
         "schema_version": 1,
         "corpus_status": "pilot_partial_labels_not_representative",
         "capabilities": vision_capabilities(),
+        "ocr_rotation_angles": args.ocr_rotations,
         "case_count": len(results),
         "cases": results,
         "false_pass_count": sum(r["false_pass"] for r in results),
@@ -323,17 +347,7 @@ def main():
     (args.output / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
     if args.check_baseline:
-        baseline = json.loads(args.check_baseline.read_text("utf-8"))
-        by_id = {r["case_id"]: r for r in results}
-        if set(by_id) != set(baseline["minimum_matched"]):
-            raise ValueError("Benchmark case coverage changed; review the baseline")
-        for case_id, floors in baseline["minimum_matched"].items():
-            result = by_id[case_id]
-            if not result["binding_valid"] or not result["rejects_false_completion_claim"]:
-                raise ValueError(f"Evidence or false-completion regression: {case_id}")
-            for category, minimum in floors.items():
-                if result["metrics"][category]["matched"] < minimum:
-                    raise ValueError(f"Recognition regression: {case_id}/{category}")
+        check_baseline(results, read_json(args.check_baseline))
     return 1 if args.require_complete and not report["production_gate_passed"] else 0
 
 

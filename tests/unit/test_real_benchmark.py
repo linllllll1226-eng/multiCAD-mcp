@@ -197,3 +197,68 @@ def test_invalid_labels_and_close_pairs_are_rejected():
     case["required_annotations"] = [{"text": ""}]
     with pytest.raises(ValueError, match="nonempty"):
         score_case(case, prediction)
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("source_sha256", None),
+        ("source_sha256", ""),
+        ("source_sha256", "z" * 64),
+        ("id", ""),
+        ("coordinate_space", None),
+        ("complete_annotation", "false"),
+        ("tolerance", True),
+        ("tolerance", "3"),
+    ],
+)
+def test_invalid_label_metadata_cannot_produce_a_pass(key, value):
+    case, prediction = fixture()
+    case[key] = value
+    prediction[key] = value
+    with pytest.raises(ValueError):
+        score_case(case, prediction)
+
+
+@pytest.mark.parametrize("key", ["claimed_complete", "truncated"])
+@pytest.mark.parametrize("value", ["false", 0, None])
+def test_completion_flags_require_actual_booleans(key, value):
+    case, prediction = fixture()
+    prediction[key] = value
+    with pytest.raises(ValueError, match="boolean"):
+        score_case(case, prediction)
+
+
+def test_exact_but_unconfirmed_dimensions_do_not_pass_completeness():
+    case, prediction = fixture()
+    prediction["dimensions"][0]["needs_confirmation"] = True
+    result = score_case(case, prediction)
+    assert result["metrics"]["typed_dimensions"]["recall"] == 1
+    assert result["unconfirmed_prediction_count"] == 1
+    assert result["claimed_complete"] and result["false_pass"]
+
+
+@pytest.mark.parametrize("category", ["texts", "dimensions", "required_annotations"])
+@pytest.mark.parametrize("bbox", [None, [20, 20, 30, 30]])
+def test_same_text_at_wrong_or_missing_location_does_not_match(category, bbox):
+    case, prediction = fixture()
+    if category == "required_annotations":
+        case[category] = [{"text": "DEBURR"}]
+        prediction[category] = [{"text": "DEBURR"}]
+    case[category][0]["bbox"] = [0, 0, 10, 10]
+    prediction[category][0]["bbox"] = bbox
+    assert score_case(case, prediction)["false_pass"]
+    prediction[category][0]["bbox"] = [0, 0, 10, 10]
+    assert score_case(case, prediction)["recognition_complete"]
+
+
+def test_degenerate_geometry_and_duplicate_close_pairs_are_rejected():
+    case, prediction = fixture()
+    case["geometry"][0]["end"] = [0, 0]
+    with pytest.raises(ValueError, match="zero-length"):
+        score_case(case, prediction)
+    case, prediction = fixture()
+    case["geometry"].append({"id": "other", "kind": "line", "start": [0, 1], "end": [10, 1]})
+    case["close_line_pairs"] = [["edge", "other"], ["other", "edge"]]
+    with pytest.raises(ValueError, match="unique lines"):
+        score_case(case, prediction)
