@@ -285,6 +285,18 @@ def evaluate(case, source, output, ocr_rotation_angles=None):
     return result
 
 
+def native_ocr_failures(results):
+    """Require actual native OCR success without rejecting vector-only pages."""
+    errors = [
+        f"{result['case_id']}: OCR status {result.get('ocr_status')!r}"
+        for result in results
+        if result.get("ocr_status") not in {"ok", "not_required"}
+    ]
+    if not any(result.get("ocr_status") == "ok" for result in results):
+        errors.append("No case completed native OCR")
+    return errors
+
+
 def main():
     """Emit reproducible measurements; production gate fails on this partial pilot."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -293,6 +305,11 @@ def main():
     )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--require-complete", action="store_true")
+    parser.add_argument(
+        "--require-native-ocr",
+        action="store_true",
+        help="Fail if native OCR is unavailable, fails, or never runs; retain all artifacts.",
+    )
     parser.add_argument("--check-baseline", type=Path)
     parser.add_argument("--ocr-rotations", type=int, nargs="*", choices=(90, 180, 270), default=[])
     args = parser.parse_args()
@@ -301,11 +318,17 @@ def main():
         evaluate(case, source, args.output, args.ocr_rotations)
         for case, source in prepare_cases(args.manifest, args.output)
     ]
+    ocr_errors = native_ocr_failures(results)
     report = {
         "schema_version": 1,
         "corpus_status": "pilot_partial_labels_not_representative",
         "capabilities": vision_capabilities(),
         "ocr_rotation_angles": args.ocr_rotations,
+        "native_ocr_gate": {
+            "required": args.require_native_ocr,
+            "passed": not ocr_errors,
+            "errors": ocr_errors,
+        },
         "case_count": len(results),
         "cases": results,
         "false_pass_count": sum(r["false_pass"] for r in results),
@@ -348,7 +371,10 @@ def main():
     print("\n".join(lines))
     if args.check_baseline:
         check_baseline(results, read_json(args.check_baseline))
-    return 1 if args.require_complete and not report["production_gate_passed"] else 0
+    return int(
+        (args.require_complete and not report["production_gate_passed"])
+        or (args.require_native_ocr and bool(ocr_errors))
+    )
 
 
 if __name__ == "__main__":

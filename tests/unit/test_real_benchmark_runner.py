@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import math
+import sys
 from copy import deepcopy
 from pathlib import Path
 
@@ -13,6 +14,44 @@ SCRIPT = Path(__file__).resolve().parents[2] / "scripts/benchmark_real_drawings.
 SPEC = importlib.util.spec_from_file_location("real_benchmark_runner", SCRIPT)
 runner = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(runner)
+
+
+@pytest.mark.parametrize("status", ["error", "unavailable", None, "not_required"])
+def test_required_native_ocr_failure_returns_nonzero_and_preserves_report(
+    tmp_path, monkeypatch, status
+):
+    output = tmp_path / "failed-native-run"
+    result = {
+        "case_id": "scan",
+        "ocr_status": status,
+        "false_pass": False,
+        "rejects_false_completion_claim": False,
+        "recognition_complete": False,
+        "metrics": {
+            key: {"matched": 0, "expected": 0} for key in ("geometry", "text", "typed_dimensions")
+        },
+    }
+    monkeypatch.setattr(runner, "prepare_cases", lambda *args: [({}, tmp_path / "scan.png")])
+    monkeypatch.setattr(runner, "evaluate", lambda *args: result)
+    monkeypatch.setattr(runner, "vision_capabilities", lambda: {})
+    monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--output", str(output), "--require-native-ocr"])
+    assert runner.main() == 1
+    report = json.loads((output / "report.json").read_text())
+    assert report["native_ocr_gate"]["required"]
+    assert not report["native_ocr_gate"]["passed"]
+    assert report["native_ocr_gate"]["errors"]
+    assert not report["production_gate_passed"]
+    assert report["live_dwg_acceptance"] == "not_evaluated"
+
+
+def test_native_ocr_gate_allows_vector_only_cases_alongside_real_success():
+    assert not runner.native_ocr_failures(
+        [
+            {"case_id": "scan", "ocr_status": "ok"},
+            {"case_id": "vector", "ocr_status": "not_required"},
+        ]
+    )
+    assert runner.native_ocr_failures([])
 
 
 def test_similarity_transforms_arc_angles_radius_and_center():

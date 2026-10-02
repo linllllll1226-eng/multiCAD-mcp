@@ -7,6 +7,7 @@ import importlib.util
 import json
 import math
 import os
+import sys
 import tempfile
 import threading
 from pathlib import Path
@@ -44,9 +45,17 @@ def _normalize_language(language: str) -> str:
 def _configure_runtime_paths() -> Path:
     """Keep Paddle model files on an ASCII-safe, user-overridable local path."""
     configured = Path(
-        os.environ.setdefault("PADDLE_PDX_CACHE_HOME", str(DEFAULT_MODEL_CACHE))
+        os.environ.get("PADDLE_PDX_CACHE_HOME", str(DEFAULT_MODEL_CACHE))
     ).expanduser()
+    if sys.platform == "win32" and not str(configured.resolve()).isascii():
+        raise ValueError(
+            "PaddleOCR Windows inference requires an ASCII-only model cache path. "
+            "Set PADDLE_PDX_CACHE_HOME to an ASCII path, such as "
+            "C:/Temp/multicad-paddle-models; Chinese paths can cause a misleading "
+            "Cannot open file error even when the model exists."
+        )
     configured.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("PADDLE_PDX_CACHE_HOME", str(configured))
     return configured
 
 

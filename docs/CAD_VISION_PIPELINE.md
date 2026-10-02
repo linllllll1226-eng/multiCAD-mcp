@@ -48,6 +48,32 @@ pages or embedded raster dimension regions. The first OCR request downloads
 official model weights to `data/paddle_models`, or to
 `PADDLE_PDX_CACHE_HOME` when that variable is set.
 
+On Windows, the absolute model cache path must contain only ASCII characters.
+Paddle's native inference engine can report `Cannot open file` for an existing
+model under a Chinese username or project directory. Set an explicit local path
+before starting the server or benchmark; the OCR provider rejects an incompatible
+path before creating the cache or loading Paddle:
+
+```powershell
+$env:PADDLE_PDX_CACHE_HOME = 'C:\Temp\multicad-paddle-models'
+```
+
+For native OCR acceptance, run the public pilot with a fresh output directory
+and the explicit OCR gate:
+
+```powershell
+uv run python scripts/benchmark_real_drawings.py --output ..\ocr-default-new --require-native-ocr
+uv run python scripts/benchmark_real_drawings.py --output ..\ocr-rotations-new --ocr-rotations 90 270 --require-native-ocr
+```
+
+The report records `native_ocr_gate` separately from regression and production
+completeness. With `--require-native-ocr`, an error, unavailable provider, or a run
+with no actual OCR success returns a nonzero exit code after saving the evidence.
+Vector-only cases may report `not_required` when another case successfully runs
+OCR. Without this option the pilot can still check geometry when OCR is absent;
+a zero exit code then does not prove native OCR acceptance. Conflicts retain
+`needs_confirmation`; partial labels never establish production completeness.
+
 ## Safety boundaries
 
 - Source analysis does not connect to AutoCAD and cannot write a DWG.
