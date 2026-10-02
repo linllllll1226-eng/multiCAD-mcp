@@ -21,7 +21,7 @@ from .ocr import extract_ocr, ocr_capabilities
 from .ocr_rotation import normalized_rotations
 from .pdf import extract_vector_pdf
 
-PIPELINE_VERSION = "1.6.0"
+PIPELINE_VERSION = "1.7.0"
 SUPPORTED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 OCR_POLICIES = {"off", "auto", "force"}
 OCR_RUNTIME_PROFILE = {
@@ -35,6 +35,7 @@ DEFAULT_CACHE_DIR = data_directory() / "vision_cache"
 _SAMPLE_KEYS = {
     "line_samples",
     "circle_samples",
+    "circle_support_samples",
     "close_parallel_pairs",
     "vector_samples",
     "geometry_samples",

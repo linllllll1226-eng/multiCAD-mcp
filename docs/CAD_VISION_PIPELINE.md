@@ -30,6 +30,25 @@ The enhanced MCP has two read-only source-analysis tools:
    thick stroke is not split into a false pair.
 8. Keep results compact and bounded so MCP responses do not flood model context.
 
+Raster circles require radial image-edge support at 360 angles: at least 65% of
+the circumference and 50% in each quadrant. Edge gradients must align with the
+radius, which rejects circles suggested only by straight boundaries or hatching.
+The radial tolerance is 3-8 pixels depending on radius. A 3 px median filter
+preserves thin drawing strokes that the former 5 px filter could erase.
+Supported centres are also checked for distinct concentric rings suppressed by
+Hough's centre-distance limit. Raw/rejected/recovered counts and bounded
+`circle_support_samples`, prioritizing retained circles, retain
+the decision evidence; `circle_candidate_count` counts retained candidates.
+Filtering happens before the output sample limit. Pipeline version 1.7.0 prevents
+reuse of earlier unfiltered cache entries.
+
+These are full-circle candidates, not verified CAD geometry. Partial, cropped,
+faint or heavily occluded circles can be missed, and rings whose radial tolerance
+bands overlap may merge. Arcs and semantic distinctions
+between circular lettering and part geometry still require independent review.
+The public corpus has partial labels, so this filter cannot establish precision
+or production completeness.
+
 Damaged OCR callouts such as `20V65` are retained as low-confidence,
 `needs_confirmation=true` diameter/depth candidates. They improve recall without
 becoming trusted production dimensions.
