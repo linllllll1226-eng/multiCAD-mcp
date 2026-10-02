@@ -53,6 +53,15 @@ parallel ink strokes remain separate. Diagonal Hough segments remain candidates;
 dimension extensions, hatching and text are not semantically classified. Raw,
 binary and combined line counts and truncation flags preserve that distinction.
 
+Oblique boundaries also use OpenCV's line-segment detector. Endpoint extensions
+require continuous nearby dark ink, stop at the first unsupported gap and stay
+within 12 pixels or 15% of the observed segment length. Ten-degree angle bins
+share the bounded sample budget so dense hatching at one angle does not suppress
+shorter boundaries at another angle. `diagonal_line_samples` and their separate
+candidate/truncation counts retain this evidence; stroke edges and intersecting
+ink can still create duplicate or approximate segments. These are source-pixel
+candidates, without semantic roles or permission to create formal CAD geometry.
+
 Hybrid PDF analysis also renders meaningful embedded image regions for geometry,
 independently of OCR policy. Rendered coordinates are mapped back through inverse
 deskew and page derotation into canonical unrotated PDF points. Vector paths stay

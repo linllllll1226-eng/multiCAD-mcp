@@ -382,6 +382,56 @@ def _supported_circles(
     return accepted, evidence[:sample_limit], rejected, recovered
 
 
+def _diagonal_segments(gray: Any, sample_limit: int) -> tuple[list[list[float]], int]:
+    """Retain diverse oblique ink segments without bridging unsupported gaps."""
+    cv2, np = _dependencies()
+    detected = cv2.createLineSegmentDetector(cv2.LSD_REFINE_STD).detect(gray)[0]
+    if detected is None:
+        return [], 0
+    height, width = gray.shape[:2]
+    bins: dict[int, list[tuple[float, list[float]]]] = {}
+    for x1, y1, x2, y2 in detected.reshape(-1, 4):
+        length = math.hypot(x2 - x1, y2 - y1)
+        angle = math.degrees(math.atan2(y2 - y1, x2 - x1)) % 180
+        if length < 24 or min(angle, 180 - angle, abs(angle - 90)) <= 3:
+            continue
+        ux, uy = (x2 - x1) / length, (y2 - y1) / length
+
+        def extend(x: float, y: float, direction: int) -> tuple[float, float]:
+            last = (float(x), float(y))
+            for distance in np.arange(0.5, min(12, length * 0.15) + 0.01, 0.5):
+                px, py = x + direction * distance * ux, y + direction * distance * uy
+                supported = False
+                for offset in (-1.5, -1, -0.5, 0, 0.5, 1, 1.5):
+                    ix, iy = round(px - offset * uy), round(py + offset * ux)
+                    if 0 <= ix < width and 0 <= iy < height and gray[iy, ix] < 160:
+                        supported = True
+                        break
+                if not supported:
+                    break
+                last = (float(px), float(py))
+            return last
+
+        start, end = extend(x1, y1, -1), extend(x2, y2, 1)
+        line = [round(value, 3) for value in (*start, *end)]
+        bins.setdefault(int(angle // 10), []).append((length, line))
+    count = sum(len(group) for group in bins.values())
+    for group in bins.values():
+        group.sort(key=lambda item: item[0], reverse=True)
+    # Dense hatching must not consume every sample and hide shorter boundaries
+    # at other angles. This balances angle bins, without assigning line roles.
+    samples: list[list[float]] = []
+    rank = 0
+    while len(samples) < min(sample_limit, count):
+        for key in sorted(bins):
+            if rank < len(bins[key]):
+                samples.append(bins[key][rank][1])
+                if len(samples) == sample_limit:
+                    break
+        rank += 1
+    return samples, count
+
+
 def analyze_image_geometry(
     path: Path,
     include_samples: bool = True,
@@ -443,6 +493,7 @@ def analyze_image_geometry(
         _pairs_from_binary(normalized_gray, sample_limit),
         sample_limit,
     )
+    diagonals, diagonal_count = _diagonal_segments(normalized_gray, sample_limit)
 
     # A 5 px median can erase the thin circle strokes in technical drawings.
     blurred = cv2.medianBlur(normalized_gray, 3)
@@ -470,6 +521,8 @@ def analyze_image_geometry(
         "raw_line_candidate_count": 0 if raw_lines is None else int(len(raw_lines)),
         "binary_line_candidate_count": binary_count,
         "line_samples_truncated": len(lines) > sample_limit,
+        "diagonal_line_candidate_count": diagonal_count,
+        "diagonal_line_samples_truncated": diagonal_count > len(diagonals),
         "circle_candidate_count": len(circles),
         "raw_circle_candidate_count": (0 if raw_circles is None else int(len(raw_circles[0]))),
         "rejected_circle_candidate_count": rejected,
@@ -478,6 +531,7 @@ def analyze_image_geometry(
     }
     if include_samples:
         result["line_samples"] = lines[:sample_limit]
+        result["diagonal_line_samples"] = diagonals
         result["close_parallel_pairs"] = close_parallel_pairs
         result["circle_samples"] = circles[:sample_limit]
         result["circle_support_samples"] = circle_support

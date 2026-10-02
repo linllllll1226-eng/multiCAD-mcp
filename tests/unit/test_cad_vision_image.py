@@ -10,7 +10,7 @@ import pytest
 from PIL import Image, ImageDraw
 
 from cad_vision.analyzer import analyze_source
-from cad_vision.image import _supported_circles, analyze_image_geometry
+from cad_vision.image import _diagonal_segments, _supported_circles, analyze_image_geometry
 
 
 def test_continuous_ink_recovers_boundary_when_hough_has_no_lines(
@@ -172,7 +172,7 @@ def test_circle_evidence_is_bounded_and_summary_omits_samples(
     detailed = analyze_source(str(source), use_cache=True, ocr_policy="off")
     summary = analyze_source(str(source), use_cache=True, ocr_policy="off", include_samples=False)
 
-    assert detailed["pipeline_version"] == "1.8.0"
+    assert detailed["pipeline_version"] == "1.9.0"
     assert detailed["cache_hit"] is False
     assert summary["cache_hit"] is True
     assert detailed["analysis"]["circle_support_samples"] == []
@@ -192,3 +192,49 @@ def test_public_turning_fixture_retains_both_labelled_circles() -> None:
     assert result["rejected_circle_candidate_count"] > 0
     # These source images have partial labels; do not assert global precision.
     assert result["circle_candidate_count"] < result["raw_circle_candidate_count"]
+
+
+def test_public_hole_tip_segments_are_observed_from_ink() -> None:
+    pytest.importorskip("cv2")
+    from cad_vision.benchmark import geometry_matches
+
+    source = Path(__file__).parents[1] / "fixtures" / "real_drawings" / "hole.png"
+    result = analyze_image_geometry(source)
+    candidates = [
+        {"kind": "line", "start": line[:2], "end": line[2:]}
+        for line in result["diagonal_line_samples"]
+    ]
+    for start, end in [([122, 409], [177, 442]), ([177, 442], [233, 409])]:
+        assert any(
+            geometry_matches({"kind": "line", "start": start, "end": end}, item, 5)
+            for item in candidates
+        )
+
+
+def test_diagonal_extension_does_not_bridge_white_gap(tmp_path: Path) -> None:
+    pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    drawing = Image.new("L", (320, 240), "white")
+    pen = ImageDraw.Draw(drawing)
+    pen.line((30, 40, 120, 100), fill="black", width=2)
+    pen.line((150, 120, 270, 200), fill="black", width=2)
+
+    lines, count = _diagonal_segments(np.asarray(drawing), 80)
+
+    assert count >= 2
+    assert all(not (min(line[0], line[2]) < 100 and max(line[0], line[2]) > 180) for line in lines)
+
+
+def test_diagonal_angle_sampling_keeps_shorter_tip_amid_hatching() -> None:
+    pytest.importorskip("cv2")
+    np = pytest.importorskip("numpy")
+    drawing = Image.new("L", (500, 400), "white")
+    pen = ImageDraw.Draw(drawing)
+    for x in range(20, 380, 8):
+        pen.line((x, 20, x + 80, 180), fill="black", width=1)
+    pen.line((80, 260, 160, 310, 240, 260), fill="black", width=2)
+
+    lines, count = _diagonal_segments(np.asarray(drawing), 12)
+
+    assert count > len(lines) == 12
+    assert any(min(line[1], line[3]) > 250 and max(line[1], line[3]) > 300 for line in lines)

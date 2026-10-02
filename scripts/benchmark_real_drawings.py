@@ -219,7 +219,9 @@ def evaluate(case, source, output, ocr_rotation_angles=None):
         for page in analysis.get("pages", [])
         for item in page.get("geometry_samples", []) + page.get("raster_geometry_samples", [])
     ]
-    for x1, y1, x2, y2 in analysis.get("line_samples", []):
+    for x1, y1, x2, y2 in analysis.get("line_samples", []) + analysis.get(
+        "diagonal_line_samples", []
+    ):
         geometry.append({"kind": "line", "start": [x1, y1], "end": [x2, y2]})
     for x, y, r in analysis.get("circle_samples", []):
         geometry.append({"kind": "circle", "center": [x, y], "radius": r})

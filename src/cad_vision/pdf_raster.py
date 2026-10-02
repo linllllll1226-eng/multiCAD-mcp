@@ -104,7 +104,9 @@ def add_raster_geometry(
                         "render_scale": scale,
                         "deskew_degrees": detected["estimated_skew_degrees"],
                     }
-                    for x1, y1, x2, y2 in detected["line_samples"]:
+                    for x1, y1, x2, y2 in (
+                        detected["line_samples"] + detected["diagonal_line_samples"]
+                    ):
                         samples.append(
                             {
                                 "kind": "line",
@@ -130,8 +132,12 @@ def add_raster_geometry(
                             "status": "ok",
                             "image_size_px": [width, height],
                             "line_candidate_count": detected["line_candidate_count"],
+                            "diagonal_line_candidate_count": detected[
+                                "diagonal_line_candidate_count"
+                            ],
                             "circle_candidate_count": detected["circle_candidate_count"],
                             "samples_truncated": detected["line_samples_truncated"]
+                            or detected["diagonal_line_samples_truncated"]
                             or detected["circle_candidate_count"] > len(detected["circle_samples"]),
                         }
                     )
