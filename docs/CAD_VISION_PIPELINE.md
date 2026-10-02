@@ -46,6 +46,23 @@ These are full-circle candidates, not verified CAD geometry. Partial, cropped,
 faint or heavily occluded circles can be missed, and rings whose radial tolerance
 bands overlap may merge. Arcs and semantic distinctions
 between circular lettering and part geometry still require independent review.
+
+Continuous horizontal/vertical ink spans supplement fragmented Hough lines,
+prioritized by length before the output bound. Separate white gaps and close
+parallel ink strokes remain separate. Diagonal Hough segments remain candidates;
+dimension extensions, hatching and text are not semantically classified. Raw,
+binary and combined line counts and truncation flags preserve that distinction.
+
+Hybrid PDF analysis also renders meaningful embedded image regions for geometry,
+independently of OCR policy. Rendered coordinates are mapped back through inverse
+deskew and page derotation into canonical unrotated PDF points. Vector paths stay
+separate from `raster_geometry_samples`. Each raster candidate carries the region,
+render density and deskew provenance and requires confirmation. Rendering includes
+vector overlays, and overlapping regions may duplicate candidates. The default
+bounds are 20 regions, four million rendered pixels per region and sixteen million
+pixels per document; omitted regions and errors are reported explicitly. Missing
+optional image dependencies retain vector extraction with raster status unavailable.
+These bounded samples do not establish complete geometry or a formal CAD plan.
 The public corpus has partial labels, so this filter cannot establish precision
 or production completeness.
 

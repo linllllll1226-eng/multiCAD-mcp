@@ -13,6 +13,47 @@ from cad_vision.analyzer import analyze_source
 from cad_vision.image import _supported_circles, analyze_image_geometry
 
 
+def test_continuous_ink_recovers_boundary_when_hough_has_no_lines(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    cv2 = pytest.importorskip("cv2")
+    source = tmp_path / "continuous.png"
+    drawing = Image.new("RGB", (320, 240), "white")
+    pen = ImageDraw.Draw(drawing)
+    pen.line((80, 25, 80, 215), fill="black", width=3)
+    pen.line((20, 120, 280, 120), fill="black", width=1)
+    drawing.save(source)
+    monkeypatch.setattr(cv2, "HoughLinesP", lambda *args, **kwargs: None)
+
+    result = analyze_image_geometry(source)
+
+    assert [80.0, 25.0, 80.0, 215.0] in result["line_samples"]
+    assert result["raw_line_candidate_count"] == 0
+    assert result["binary_line_candidate_count"] == 2
+
+
+def test_ink_geometry_preserves_white_gaps_and_close_parallel_lines(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    cv2 = pytest.importorskip("cv2")
+    source = tmp_path / "distinct.png"
+    drawing = Image.new("RGB", (300, 220), "white")
+    pen = ImageDraw.Draw(drawing)
+    for y in (40, 43):
+        pen.line((30, y, 270, y), fill="black", width=1)
+    pen.line((40, 100, 130, 100), fill="black", width=1)
+    pen.line((150, 100, 260, 100), fill="black", width=1)
+    drawing.save(source)
+    monkeypatch.setattr(cv2, "HoughLinesP", lambda *args, **kwargs: None)
+
+    result = analyze_image_geometry(source)
+
+    assert result["binary_line_candidate_count"] == 4
+    assert [30.0, 40.0, 270.0, 40.0] in result["line_samples"]
+    assert [30.0, 43.0, 270.0, 43.0] in result["line_samples"]
+    assert [40.0, 100.0, 260.0, 100.0] not in result["line_samples"]
+
+
 def _has_circle(circles: list, x: float, y: float, radius: float) -> bool:
     """Compare detected geometry with the independently drawn circle."""
     return any(math.hypot(cx - x, cy - y) <= 4 and abs(cr - radius) <= 4 for cx, cy, cr in circles)
@@ -36,6 +77,24 @@ def test_real_circles_survive_crosshairs_and_concentric_suppression(tmp_path: Pa
         assert _has_circle(result["circle_samples"], x, y, radius)
     assert result["concentric_circle_candidate_count"] >= 2
     assert result["circle_candidate_count"] == 4
+
+
+def test_staggered_ink_rows_do_not_invent_a_continuous_axis_line(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    cv2 = pytest.importorskip("cv2")
+    source = tmp_path / "staggered.png"
+    drawing = Image.new("RGB", (300, 220), "white")
+    pen = ImageDraw.Draw(drawing)
+    pen.line((30, 100, 210, 100), fill="black", width=1)
+    pen.line((90, 101, 270, 101), fill="black", width=1)
+    drawing.save(source)
+    monkeypatch.setattr(cv2, "HoughLinesP", lambda *args, **kwargs: None)
+
+    result = analyze_image_geometry(source)
+
+    assert [30.0, 100.5, 270.0, 100.5] not in result["line_samples"]
+    assert all(abs(line[2] - line[0]) <= 180 for line in result["line_samples"])
 
 
 def test_hatching_and_straight_boundaries_do_not_become_circles(tmp_path: Path) -> None:
@@ -113,7 +172,7 @@ def test_circle_evidence_is_bounded_and_summary_omits_samples(
     detailed = analyze_source(str(source), use_cache=True, ocr_policy="off")
     summary = analyze_source(str(source), use_cache=True, ocr_policy="off", include_samples=False)
 
-    assert detailed["pipeline_version"] == "1.7.0"
+    assert detailed["pipeline_version"] == "1.8.0"
     assert detailed["cache_hit"] is False
     assert summary["cache_hit"] is True
     assert detailed["analysis"]["circle_support_samples"] == []

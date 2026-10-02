@@ -20,8 +20,9 @@ from .image import analyze_image_geometry
 from .ocr import extract_ocr, ocr_capabilities
 from .ocr_rotation import normalized_rotations
 from .pdf import extract_vector_pdf
+from .pdf_raster import add_raster_geometry
 
-PIPELINE_VERSION = "1.7.0"
+PIPELINE_VERSION = "1.8.0"
 SUPPORTED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 OCR_POLICIES = {"off", "auto", "force"}
 OCR_RUNTIME_PROFILE = {
@@ -39,6 +40,7 @@ _SAMPLE_KEYS = {
     "close_parallel_pairs",
     "vector_samples",
     "geometry_samples",
+    "raster_geometry_samples",
     "text_samples",
     "image_samples",
 }
@@ -137,6 +139,8 @@ def _runtime_fingerprint(*, suffix: str, ocr_policy: str) -> dict[str, Any]:
         source_provider: dict[str, Any] = {
             "provider": "pymupdf",
             "version": _safe_distribution_version("PyMuPDF"),
+            "opencv_version": _safe_distribution_version("opencv-python-headless"),
+            "numpy_version": _safe_distribution_version("numpy"),
         }
     else:
         source_provider = {
@@ -398,6 +402,7 @@ def analyze_source(
             default_unit=unit_resolution["unit"],
             unit_source=unit_resolution["unit_source"],
         )
+        add_raster_geometry(source, analysis, raster_region_threshold)
     else:
         analysis = analyze_image_geometry(source, include_samples=True)
 

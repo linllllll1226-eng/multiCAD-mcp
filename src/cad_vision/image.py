@@ -406,10 +406,38 @@ def analyze_image_geometry(
         minLineLength=minimum,
         maxLineGap=8,
     )
-    lines: list[list[int]] = []
+    # Continuous ink spans recover boundaries fragmented by the edge Hough
+    # detector. Do not join separate spans across white gaps or merge nearby
+    # physical strokes. Keep diagonal/remaining Hough candidates as fallback.
+    ink_clusters = _binary_axis_clusters(normalized_gray)
+    lines: list[list[float]] = []
+    for cluster in sorted(
+        ink_clusters, key=lambda item: item["span"][1] - item["span"][0], reverse=True
+    ):
+        offset = round(cluster["offset"], 3)
+        axis_pixels = (
+            normalized_gray[round(offset), :]
+            if cluster["axis"] == "horizontal"
+            else normalized_gray[:, round(offset)]
+        )
+        # Adjacent rows can have staggered endpoints. Sample the central ink
+        # row/column instead of turning their union into an invented long line.
+        for start, end in _runs(axis_pixels < 160, max(24, min(normalized_gray.shape) // 25)):
+            if start > cluster["span"][1] or end < cluster["span"][0]:
+                continue
+            candidate = (
+                [start, offset, end, offset]
+                if cluster["axis"] == "horizontal"
+                else [offset, start, offset, end]
+            )
+            if candidate not in lines:
+                lines.append(candidate)
+    binary_count = len(lines)
     if raw_lines is not None:
-        for line in raw_lines.reshape(-1, 4)[:sample_limit]:
-            lines.append([int(value) for value in line])
+        for line in raw_lines.reshape(-1, 4):
+            candidate = [float(value) for value in line]
+            if candidate not in lines:
+                lines.append(candidate)
     close_parallel_pairs = _merge_close_pairs(
         _close_parallel_pairs(raw_lines, sample_limit),
         _pairs_from_binary(normalized_gray, sample_limit),
@@ -438,7 +466,10 @@ def analyze_image_geometry(
         "image_size_px": [int(image.shape[1]), int(image.shape[0])],
         "estimated_skew_degrees": skew,
         "residual_skew_degrees": residual,
-        "line_candidate_count": 0 if raw_lines is None else int(len(raw_lines)),
+        "line_candidate_count": len(lines),
+        "raw_line_candidate_count": 0 if raw_lines is None else int(len(raw_lines)),
+        "binary_line_candidate_count": binary_count,
+        "line_samples_truncated": len(lines) > sample_limit,
         "circle_candidate_count": len(circles),
         "raw_circle_candidate_count": (0 if raw_circles is None else int(len(raw_circles[0]))),
         "rejected_circle_candidate_count": rejected,
@@ -446,7 +477,7 @@ def analyze_image_geometry(
         "close_parallel_pair_count": len(close_parallel_pairs),
     }
     if include_samples:
-        result["line_samples"] = lines
+        result["line_samples"] = lines[:sample_limit]
         result["close_parallel_pairs"] = close_parallel_pairs
         result["circle_samples"] = circles[:sample_limit]
         result["circle_support_samples"] = circle_support
