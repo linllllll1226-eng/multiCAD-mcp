@@ -22,7 +22,7 @@ from .ocr_rotation import normalized_rotations
 from .pdf import extract_vector_pdf
 from .pdf_raster import add_raster_geometry
 
-PIPELINE_VERSION = "1.9.0"
+PIPELINE_VERSION = "1.9.1"
 SUPPORTED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 OCR_POLICIES = {"off", "auto", "force"}
 OCR_RUNTIME_PROFILE = {

@@ -172,7 +172,7 @@ def test_circle_evidence_is_bounded_and_summary_omits_samples(
     detailed = analyze_source(str(source), use_cache=True, ocr_policy="off")
     summary = analyze_source(str(source), use_cache=True, ocr_policy="off", include_samples=False)
 
-    assert detailed["pipeline_version"] == "1.9.0"
+    assert detailed["pipeline_version"] == "1.9.1"
     assert detailed["cache_hit"] is False
     assert summary["cache_hit"] is True
     assert detailed["analysis"]["circle_support_samples"] == []

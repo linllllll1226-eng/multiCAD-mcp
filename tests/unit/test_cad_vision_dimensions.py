@@ -143,3 +143,14 @@ def test_inch_thread_accepts_compact_and_spaced_standard_designators() -> None:
         assert [(item["kind"], item["value"]) for item in parsed] == [("thread", "1/4-20UNC-2B")]
         assert parsed[0]["unit"] == "inch"
         assert parsed[0]["tolerance_class"] == "2B"
+
+
+def test_spaced_inch_thread_class_survives_millimeter_sheet_units() -> None:
+    for source in ("1/2-13 UNC - 2B", "1/2-13 UNC- 2B", "1/2-13 UNC -2B"):
+        parsed = parse_dimension_text(source, default_unit="mm", unit_source="source")
+        assert len(parsed) == 1
+        thread = parsed[0]
+        assert (thread["kind"], thread["value"]) == ("thread", "1/2-13UNC-2B")
+        assert thread["tolerance_class"] == "2B"
+        assert thread["unit"] == "inch"
+        assert thread["unit_source"] == "thread_standard"

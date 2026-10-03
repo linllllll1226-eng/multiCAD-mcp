@@ -137,7 +137,7 @@ def parse_dimension_text(
 
     thread = re.search(
         rf"\b(M\d+(?:\.\d+)?(?:\s*X\s*{_NUMBER})?(?:-\d+[A-Z])?|"
-        rf"\d+\s*/\s*\d+\s*-\s*\d+\s*(?:UNC|UNF|UNEF)(?:-\d+[AB])?)\b",
+        rf"\d+\s*/\s*\d+\s*-\s*\d+\s*(?:UNC|UNF|UNEF)(?:\s*-\s*\d+[AB])?)\b",
         normalized,
     )
     if thread:

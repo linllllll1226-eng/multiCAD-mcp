@@ -121,6 +121,12 @@ a zero exit code then does not prove native OCR acceptance. Conflicts retain
 
 ## Safety boundaries
 
+Unified inch thread annotations preserve a tolerance class even with spaces
+around its separator: `1/2-13 UNC - 2B` becomes `1/2-13UNC-2B` with class `2B`.
+The thread standard supplies inch units even on a sheet whose general length
+unit is millimeters. OCR that drops diameter, angle, or depth symbols still
+needs source review; parsing a number does not recover those missing semantics.
+
 - Source analysis does not connect to AutoCAD and cannot write a DWG.
 - Network/UNC paths and unsupported file types are rejected.
 - Input size defaults to 100 MB and can be changed with
