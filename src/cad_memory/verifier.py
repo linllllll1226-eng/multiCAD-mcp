@@ -18,20 +18,27 @@ def _safe_get(entity: Any, name: str, default: Any = None) -> Any:
 
 
 def _serializable(value: Any) -> Any:
-    if value is None or isinstance(value, (str, bool, int, float)):
+    if isinstance(value, float):
+        if math.isfinite(value):
+            return value
+        return "NaN" if math.isnan(value) else "Infinity" if value > 0 else "-Infinity"
+    if value is None or isinstance(value, (str, bool, int)):
         return value
     if isinstance(value, Real):
-        return float(value)
+        try:
+            return _serializable(float(value))
+        except (TypeError, ValueError, OverflowError):
+            return str(value)
     if isinstance(value, Mapping):
         return {str(key): _serializable(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_serializable(item) for item in value]
     try:
         return [_serializable(item) for item in value]
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         try:
-            return float(value)
-        except (TypeError, ValueError):
+            return _serializable(float(value))
+        except (TypeError, ValueError, OverflowError):
             return str(value)
 
 
@@ -43,7 +50,7 @@ def _as_sequence(value: Any) -> list[Any] | None:
         return list(value)
     try:
         return list(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
@@ -54,7 +61,9 @@ def _normalize_point(value: Any) -> tuple[float, float, float] | None:
         return None
     try:
         numbers = [float(item) for item in values]
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not all(math.isfinite(number) for number in numbers):
         return None
     if len(numbers) == 2:
         numbers.append(0.0)
@@ -178,7 +187,7 @@ def read_entity_state(entity: Any) -> dict[str, Any]:
             if output in _ANGLE_PROPERTIES:
                 try:
                     value = math.degrees(float(value))
-                except (TypeError, ValueError):
+                except (TypeError, ValueError, OverflowError):
                     pass
             state[output] = _serializable(value)
     for extension_name, rotated_name in (
@@ -203,7 +212,10 @@ def read_entity_state(entity: Any) -> dict[str, Any]:
         if height is not None:
             state["text_height"] = _serializable(height)
     if "radius" in state:
-        state["diameter"] = 2.0 * float(state["radius"])
+        try:
+            state["diameter"] = _serializable(2.0 * float(state["radius"]))
+        except (TypeError, ValueError, OverflowError):
+            pass
     coordinates = state.get("coordinates")
     vertices = _normalize_points(
         coordinates,
@@ -214,8 +226,8 @@ def read_entity_state(entity: Any) -> dict[str, Any]:
         state["vertex_count"] = len(vertices)
         xs = [point[0] for point in vertices]
         ys = [point[1] for point in vertices]
-        state["width"] = max(xs) - min(xs)
-        state["height"] = max(ys) - min(ys)
+        state["width"] = _serializable(max(xs) - min(xs))
+        state["height"] = _serializable(max(ys) - min(ys))
     fill_values = [
         _safe_get(entity, "TextFill"),
         _safe_get(entity, "UseBackgroundColor"),
@@ -247,10 +259,14 @@ def _expected_object_type(entity_type: str) -> str | list[str]:
 def _angle_error(target: Any, actual: Any) -> float:
     """Compare degree angles on a circle, treating 0 and 360 as equivalent."""
     try:
-        target_angle = float(target) % 360.0
-        actual_angle = float(actual) % 360.0
-    except (TypeError, ValueError):
+        target_angle = float(target)
+        actual_angle = float(actual)
+    except (TypeError, ValueError, OverflowError):
         return math.inf
+    if not math.isfinite(target_angle) or not math.isfinite(actual_angle):
+        return math.inf
+    target_angle %= 360.0
+    actual_angle %= 360.0
     return abs((actual_angle - target_angle + 180.0) % 360.0 - 180.0)
 
 
@@ -284,7 +300,13 @@ def _numeric_error(target: Any, actual: Any, *, property_name: str = "") -> floa
         return _angle_error(target, actual)
     if isinstance(target, Real) and not isinstance(target, bool):
         if isinstance(actual, Real) and not isinstance(actual, bool):
-            return abs(float(target) - float(actual))
+            try:
+                expected_number, actual_number = float(target), float(actual)
+            except (TypeError, ValueError, OverflowError):
+                return math.inf
+            if not math.isfinite(expected_number) or not math.isfinite(actual_number):
+                return math.inf
+            return abs(expected_number - actual_number)
         return math.inf
     if isinstance(target, (list, tuple)):
         target_values = _as_sequence(target)
@@ -439,20 +461,22 @@ class PostExecutionVerifier:
         rows = []
         for name, target_value in checks.items():
             actual_value = actual.get(name)
-            error = _numeric_error(target_value, actual_value, property_name=name)
             if name in {"object_type", "effective_linetype"} and isinstance(target_value, list):
+                error = None
                 passed = str(actual_value).lower() in {value.lower() for value in target_value}
-            elif error is not None:
-                passed = error <= tolerance
             else:
-                passed = str(target_value).lower() == str(actual_value).lower()
+                error = _numeric_error(target_value, actual_value, property_name=name)
+                if error is not None:
+                    passed = math.isfinite(error) and error <= tolerance
+                else:
+                    passed = str(target_value).lower() == str(actual_value).lower()
             rows.append(
                 {
                     "entity_index": index,
                     "property": name,
-                    "target": target_value,
-                    "actual": actual_value,
-                    "error": error,
+                    "target": _serializable(target_value),
+                    "actual": _serializable(actual_value),
+                    "error": error if error is None or math.isfinite(error) else None,
                     "passed": passed,
                 }
             )

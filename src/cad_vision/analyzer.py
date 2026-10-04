@@ -18,9 +18,11 @@ from cad_runtime import data_directory
 from .dimensions import normalize_length_unit
 from .image import analyze_image_geometry
 from .ocr import extract_ocr, ocr_capabilities
+from .ocr_rotation import normalized_rotations
 from .pdf import extract_vector_pdf
+from .pdf_raster import add_raster_geometry
 
-PIPELINE_VERSION = "1.5.0"
+PIPELINE_VERSION = "1.9.1"
 SUPPORTED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 OCR_POLICIES = {"off", "auto", "force"}
 OCR_RUNTIME_PROFILE = {
@@ -33,10 +35,13 @@ DEFAULT_CACHE_DIR = data_directory() / "vision_cache"
 
 _SAMPLE_KEYS = {
     "line_samples",
+    "diagonal_line_samples",
     "circle_samples",
+    "circle_support_samples",
     "close_parallel_pairs",
     "vector_samples",
     "geometry_samples",
+    "raster_geometry_samples",
     "text_samples",
     "image_samples",
 }
@@ -135,6 +140,8 @@ def _runtime_fingerprint(*, suffix: str, ocr_policy: str) -> dict[str, Any]:
         source_provider: dict[str, Any] = {
             "provider": "pymupdf",
             "version": _safe_distribution_version("PyMuPDF"),
+            "opencv_version": _safe_distribution_version("opencv-python-headless"),
+            "numpy_version": _safe_distribution_version("numpy"),
         }
     else:
         source_provider = {
@@ -319,6 +326,11 @@ def _merge_dimension_evidence(
             float(existing.get("confidence", 0.0)),
             float(candidate.get("confidence", 0.0)),
         )
+        if candidate.get("needs_confirmation"):
+            existing["needs_confirmation"] = True
+        for key in ("confirmation_reasons", "orientation_conflicts"):
+            if key in candidate:
+                existing[key] = sorted(set(existing.get(key, [])) | set(candidate[key]))
     return merged[:200]
 
 
@@ -335,12 +347,14 @@ def analyze_source(
     raster_region_threshold: float = 0.02,
     source_unit: str | None = None,
     drawing_unit: str | None = None,
+    ocr_rotation_angles: list[int] | None = None,
 ) -> dict[str, Any]:
     """Analyze a local CAD source and return a compact structured result."""
     started = time.perf_counter()
     source = _validated_source(source_path)
     max_pages = max(1, min(int(max_pages), 50))
     policy = _normalized_ocr_policy(use_ocr=use_ocr, ocr_policy=ocr_policy)
+    rotations = normalized_rotations(ocr_rotation_angles)
     raster_page_threshold = float(raster_page_threshold)
     raster_region_threshold = float(raster_region_threshold)
     if not 0.0 <= raster_page_threshold <= 1.0:
@@ -355,6 +369,7 @@ def analyze_source(
         "max_pages": max_pages,
         "sample_policy": "canonical_bounded",
         "ocr_policy": policy,
+        "ocr_rotation_angles": rotations,
         "ocr_language": ocr_language,
         "ocr_min_confidence": float(ocr_min_confidence),
         "raster_page_threshold": raster_page_threshold,
@@ -388,6 +403,7 @@ def analyze_source(
             default_unit=unit_resolution["unit"],
             unit_source=unit_resolution["unit_source"],
         )
+        add_raster_geometry(source, analysis, raster_region_threshold)
     else:
         analysis = analyze_image_geometry(source, include_samples=True)
 
@@ -430,6 +446,7 @@ def analyze_source(
             regions=regions if is_pdf else None,
             default_unit=unit_resolution["unit"],
             unit_source=unit_resolution["unit_source"],
+            rotation_angles=rotations,
         )
     elif policy == "off":
         analysis["ocr"] = {

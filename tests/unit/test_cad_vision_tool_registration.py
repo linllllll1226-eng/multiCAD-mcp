@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+import importlib.util
 import json
+from pathlib import Path
 from typing import Any
 
-from mcp_tools.tools.vision import register_vision_tools
+SPEC = importlib.util.spec_from_file_location(
+    "vision_tool_contract", Path(__file__).resolve().parents[2] / "src/mcp_tools/tools/vision.py"
+)
+vision_tools = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(vision_tools)
+register_vision_tools = vision_tools.register_vision_tools
 
 
 class FakeMCP:
@@ -39,7 +46,7 @@ def test_analysis_tool_forwards_hybrid_policy_and_unit_options(monkeypatch: Any)
         captured.update(kwargs)
         return {"ok": True}
 
-    monkeypatch.setattr("mcp_tools.tools.vision.analyze_source", fake_analyze)
+    monkeypatch.setattr(vision_tools, "analyze_source", fake_analyze)
     mcp = FakeMCP()
     register_vision_tools(mcp)
     payload = json.loads(
@@ -50,6 +57,7 @@ def test_analysis_tool_forwards_hybrid_policy_and_unit_options(monkeypatch: Any)
             raster_region_threshold=0.05,
             source_unit="inch",
             drawing_unit="inch",
+            ocr_rotation_angles=[90, 270],
         )
     )
 
@@ -59,3 +67,4 @@ def test_analysis_tool_forwards_hybrid_policy_and_unit_options(monkeypatch: Any)
     assert captured["raster_region_threshold"] == 0.05
     assert captured["source_unit"] == "inch"
     assert captured["drawing_unit"] == "inch"
+    assert captured["ocr_rotation_angles"] == [90, 270]

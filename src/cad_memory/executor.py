@@ -263,7 +263,7 @@ class PlanExecutor:
         kind = entity.entity_type.lower()
         c = entity.coordinates
         d = entity.dimensions
-        common = (entity.layer, "white", 25)
+        common = (entity.layer, "bylayer", 25)
         creation_kwargs = (
             {"_on_created": on_created}
             if on_created is not None
@@ -286,7 +286,7 @@ class PlanExecutor:
                 float(d["height"]),
                 float(d.get("rotation", 0.0)),
                 entity.layer,
-                "white",
+                "bylayer",
                 _skip_refresh=True,
                 **creation_kwargs,
             )
@@ -330,7 +330,7 @@ class PlanExecutor:
                 _coord(c["end"]),
                 None,
                 entity.layer,
-                "white",
+                "bylayer",
                 float(d.get("offset", 10.0)),
                 _skip_refresh=True,
                 **creation_kwargs,
@@ -356,6 +356,10 @@ class PlanExecutor:
         """Apply post-create properties after the handle is owned for rollback."""
         if entity.operation != "create":
             return
+        # Layer colors distinguish preview roles and unresolved geometry. Set
+        # this strictly after ownership registration, including native AddDim*
+        # objects, so a refused color write follows the existing rollback path.
+        cad_object.Color = 256
         kind = entity.entity_type.lower()
         if kind in {"diametric_dimension", "radial_dimension"}:
             cad_object.Layer = entity.layer

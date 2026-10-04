@@ -1,8 +1,7 @@
 site_name: multiCAD-mcp
 site_description: MCP server for guarded AI control of AutoCAD and other Windows COM CAD applications
-site_url: https://ancode666.github.io/multiCAD-mcp
-repo_url: https://github.com/ancode666/multiCAD-mcp
-repo_name: AnCode666/multiCAD-mcp
+repo_url: https://github.com/linllllll1226-eng/multiCAD-mcp
+repo_name: linllllll1226-eng/multiCAD-mcp
 copyright: Apache-2.0
 
 theme:
@@ -77,6 +76,8 @@ nav:
       - Vision Pipeline: CAD_VISION_PIPELINE.md
       - Scanned Drawing OCR: CAD_OCR.md
       - Vision Benchmark: CAD_VISION_BENCHMARK.md
+      - Real Drawing Pilot: REAL_DRAWING_BENCHMARK.md
+      - Private Drawing Evaluation: PRIVATE_DRAWING_EVALUATION.md
       - Background Visual Audit: CAD_BACKGROUND_AUDIT.md
   - Web Dashboard: 06-WEB-DASHBOARD.md
   - API Reference:

@@ -142,6 +142,13 @@ allow flags.
 7. Call `cad_verify_execution` with the same plan, handles, and `task_id`.
 8. Report the comparison rows: target, actual, error, and pass/fail.
 
+Verification reports use JSON `null` for categorical comparisons or an unavailable
+finite numeric distance. `passed` remains the explicit decision: a required numeric
+comparison with an invalid, missing, nonfinite or overflowed observation fails. Nonfinite actual
+values are retained as the strings `NaN`, `Infinity` or `-Infinity`, never as
+invented finite coordinates. Reports can be encoded with `allow_nan=False`;
+categorical membership checks do not calculate numeric distances.
+
 Validation uses an entity-specific dimension schema instead of treating every
 field as a positive number. Boolean polyline closure remains a boolean, while
 numeric fields are checked according to their entity semantics. The geometry gate

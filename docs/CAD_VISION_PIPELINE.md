@@ -30,6 +30,51 @@ The enhanced MCP has two read-only source-analysis tools:
    thick stroke is not split into a false pair.
 8. Keep results compact and bounded so MCP responses do not flood model context.
 
+Raster circles require radial image-edge support at 360 angles: at least 65% of
+the circumference and 50% in each quadrant. Edge gradients must align with the
+radius, which rejects circles suggested only by straight boundaries or hatching.
+The radial tolerance is 3-8 pixels depending on radius. A 3 px median filter
+preserves thin drawing strokes that the former 5 px filter could erase.
+Supported centres are also checked for distinct concentric rings suppressed by
+Hough's centre-distance limit. Raw/rejected/recovered counts and bounded
+`circle_support_samples`, prioritizing retained circles, retain
+the decision evidence; `circle_candidate_count` counts retained candidates.
+Filtering happens before the output sample limit. Pipeline version 1.7.0 prevents
+reuse of earlier unfiltered cache entries.
+
+These are full-circle candidates, not verified CAD geometry. Partial, cropped,
+faint or heavily occluded circles can be missed, and rings whose radial tolerance
+bands overlap may merge. Arcs and semantic distinctions
+between circular lettering and part geometry still require independent review.
+
+Continuous horizontal/vertical ink spans supplement fragmented Hough lines,
+prioritized by length before the output bound. Separate white gaps and close
+parallel ink strokes remain separate. Diagonal Hough segments remain candidates;
+dimension extensions, hatching and text are not semantically classified. Raw,
+binary and combined line counts and truncation flags preserve that distinction.
+
+Oblique boundaries also use OpenCV's line-segment detector. Endpoint extensions
+require continuous nearby dark ink, stop at the first unsupported gap and stay
+within 12 pixels or 15% of the observed segment length. Ten-degree angle bins
+share the bounded sample budget so dense hatching at one angle does not suppress
+shorter boundaries at another angle. `diagonal_line_samples` and their separate
+candidate/truncation counts retain this evidence; stroke edges and intersecting
+ink can still create duplicate or approximate segments. These are source-pixel
+candidates, without semantic roles or permission to create formal CAD geometry.
+
+Hybrid PDF analysis also renders meaningful embedded image regions for geometry,
+independently of OCR policy. Rendered coordinates are mapped back through inverse
+deskew and page derotation into canonical unrotated PDF points. Vector paths stay
+separate from `raster_geometry_samples`. Each raster candidate carries the region,
+render density and deskew provenance and requires confirmation. Rendering includes
+vector overlays, and overlapping regions may duplicate candidates. The default
+bounds are 20 regions, four million rendered pixels per region and sixteen million
+pixels per document; omitted regions and errors are reported explicitly. Missing
+optional image dependencies retain vector extraction with raster status unavailable.
+These bounded samples do not establish complete geometry or a formal CAD plan.
+The public corpus has partial labels, so this filter cannot establish precision
+or production completeness.
+
 Damaged OCR callouts such as `20V65` are retained as low-confidence,
 `needs_confirmation=true` diameter/depth candidates. They improve recall without
 becoming trusted production dimensions.
@@ -48,7 +93,39 @@ pages or embedded raster dimension regions. The first OCR request downloads
 official model weights to `data/paddle_models`, or to
 `PADDLE_PDX_CACHE_HOME` when that variable is set.
 
+On Windows, the absolute model cache path must contain only ASCII characters.
+Paddle's native inference engine can report `Cannot open file` for an existing
+model under a Chinese username or project directory. Set an explicit local path
+before starting the server or benchmark; the OCR provider rejects an incompatible
+path before creating the cache or loading Paddle:
+
+```powershell
+$env:PADDLE_PDX_CACHE_HOME = 'C:\Temp\multicad-paddle-models'
+```
+
+For native OCR acceptance, run the public pilot with a fresh output directory
+and the explicit OCR gate:
+
+```powershell
+uv run python scripts/benchmark_real_drawings.py --output ..\ocr-default-new --require-native-ocr
+uv run python scripts/benchmark_real_drawings.py --output ..\ocr-rotations-new --ocr-rotations 90 270 --require-native-ocr
+```
+
+The report records `native_ocr_gate` separately from regression and production
+completeness. With `--require-native-ocr`, an error, unavailable provider, or a run
+with no actual OCR success returns a nonzero exit code after saving the evidence.
+Vector-only cases may report `not_required` when another case successfully runs
+OCR. Without this option the pilot can still check geometry when OCR is absent;
+a zero exit code then does not prove native OCR acceptance. Conflicts retain
+`needs_confirmation`; partial labels never establish production completeness.
+
 ## Safety boundaries
+
+Unified inch thread annotations preserve a tolerance class even with spaces
+around its separator: `1/2-13 UNC - 2B` becomes `1/2-13UNC-2B` with class `2B`.
+The thread standard supplies inch units even on a sheet whose general length
+unit is millimeters. OCR that drops diameter, angle, or depth symbols still
+needs source review; parsing a number does not recover those missing semantics.
 
 - Source analysis does not connect to AutoCAD and cannot write a DWG.
 - Network/UNC paths and unsupported file types are rejected.
