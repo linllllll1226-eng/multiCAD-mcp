@@ -58,6 +58,16 @@ failed evidence and use a fresh run for a new acceptance attempt.
 
 COM calls themselves are not forcibly cancellable. The active-document polling
 after `Open` is bounded to ten seconds; this does not bound `Open` itself.
+After a single `Add`, only reads of that new document's `ModelSpace.Count` retry
+the integer COM-busy HRESULTs `-2147418111` and `-2147417846`, with a ten-second
+retry deadline and at most 0.1 seconds between reads. A read call itself cannot be
+forcibly cancelled. Preparation reacquires `ActiveDocument` to handle a generic
+`Add` return wrapper, but requires the same new name, empty `FullName` and `Path`,
+matching COM identity and an empty model space; baseline names are rejected.
+`SaveAs` and `SetVariable` must be callable before the seven variable writes and
+one `SaveAs`. No mutation is retried. Identity mismatch, another COM error or a
+read timeout leaves `preparing` without a successful event; inspect the failed
+run and preserve it instead of resetting it or deleting the new empty drawing.
 The state schema is version 1 and deliberately rejects the older one-off script's
 state files. Keep those historical artifacts intact and use a fresh directory.
 

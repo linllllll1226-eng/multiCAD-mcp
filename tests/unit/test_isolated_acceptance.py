@@ -17,6 +17,8 @@ class Document:
         self.app = app
         self.FullName = str(path)
         self.Name = Path(path).name if path else "Drawing1.dwg"
+        self.Path = str(Path(path).parent) if path else ""
+        self._oleobj_ = object()
         self.ModelSpace = SimpleNamespace(Count=count)
         self.Saved = bool(path)
         self.dbmod = 0
@@ -35,6 +37,7 @@ class Document:
         self.save_as_calls.append(path)
         self.FullName = path
         self.Name = Path(path).name
+        self.Path = str(Path(path).parent)
         self.Save()
 
     def Save(self):
@@ -91,6 +94,18 @@ class ComReadError(RuntimeError):
         """Expose a COM-style HRESULT without importing the native COM runtime."""
         super().__init__(f"COM read failed: {hresult}")
         self.hresult = hresult
+
+
+class GenericAddWrapper:
+    def __init__(self, document):
+        """Keep COM identity and read properties but omit the SaveAs interface."""
+        self.document = document
+
+    def __getattr__(self, name):
+        """Reproduce the generic Add wrapper that cannot expose SaveAs."""
+        if name == "SaveAs":
+            raise AttributeError("Add.SaveAs")
+        return getattr(self.document, name)
 
 
 class CountReadSequence:
@@ -367,6 +382,90 @@ def test_delayed_wakeup_does_not_retry_a_read_after_the_deadline(run, monkeypatc
     assert app.ActiveDocument.save_as_calls == []
     assert state(root)["phase"] == "preparing"
     assert state(root)["events"] == []
+    assert formal.writes == []
+    assert not (root / ".acceptance.lock").exists()
+
+
+def test_generic_add_wrapper_is_rebound_to_the_same_native_document_before_writes(run, monkeypatch):
+    app, root, formal = run
+    original_add = app.Documents.Add
+
+    def add():
+        return GenericAddWrapper(original_add())
+
+    monkeypatch.setattr(app.Documents, "Add", add)
+    result = acceptance.execute_lifecycle("prepare", app, root)
+
+    assert result["prepared"] is True
+    assert result["drawing"]["entity_count"] == 0
+    assert app.Documents.add_calls == 1
+    assert app.ActiveDocument.save_as_calls == [state(root)["path"]]
+    assert app.ActiveDocument.writes.count("save") == 1
+    assert len([entry for entry in app.ActiveDocument.writes if isinstance(entry, tuple)]) == 7
+    assert state(root)["phase"] == "prepared"
+    assert formal.writes == []
+    assert not (root / ".acceptance.lock").exists()
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        "baseline_name",
+        "saved_fullname",
+        "nonempty_path",
+        "wrong_active_baseline",
+        "wrong_active_other_empty",
+        "wrong_active_same_name",
+        "native_saveas_missing",
+        "native_setvariable_missing",
+        "missing_com_identity",
+        "active_nonempty",
+    ],
+)
+def test_unbound_add_or_active_document_never_receives_variables_or_save(run, monkeypatch, invalid):
+    app, root, formal = run
+    original_add = app.Documents.Add
+    created = []
+
+    def add():
+        document = original_add()
+        created.append(document)
+        if invalid == "baseline_name":
+            document.Name = formal.Name
+        elif invalid == "saved_fullname":
+            document.FullName = str(root / "unrelated.dwg")
+        elif invalid == "nonempty_path":
+            document.Path = str(root)
+        elif invalid == "wrong_active_baseline":
+            app.ActiveDocument = formal
+        elif invalid in {"wrong_active_other_empty", "wrong_active_same_name"}:
+            other = Document(app)
+            if invalid == "wrong_active_other_empty":
+                other.Name = "Drawing99.dwg"
+            app.Documents.items.append(other)
+            app.ActiveDocument = other
+        elif invalid == "native_saveas_missing":
+            monkeypatch.setattr(document, "SaveAs", None)
+        elif invalid == "native_setvariable_missing":
+            monkeypatch.setattr(document, "SetVariable", None)
+        elif invalid == "missing_com_identity":
+            monkeypatch.delattr(document, "_oleobj_")
+        else:
+            document.ModelSpace = CountReadSequence([0, 1])
+        return GenericAddWrapper(document)
+
+    monkeypatch.setattr(app.Documents, "Add", add)
+    with pytest.raises(ValueError):
+        acceptance.execute_lifecycle("prepare", app, root)
+
+    assert app.Documents.add_calls == 1
+    assert created[0].writes == []
+    assert created[0].save_as_calls == []
+    assert app.ActiveDocument.writes == []
+    assert app.ActiveDocument.save_as_calls == []
+    assert state(root)["phase"] == "preparing"
+    assert state(root)["events"] == []
+    assert not Path(state(root)["path"]).exists()
     assert formal.writes == []
     assert not (root / ".acceptance.lock").exists()
 
