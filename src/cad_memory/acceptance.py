@@ -115,19 +115,17 @@ def _read_new_document_count(document: Any) -> int:
 
 def _bind_added_document(app: Any, added: Any, baseline: list[dict[str, Any]]) -> Any:
     """Reacquire a native document only when it is the same new empty COM object."""
-    identity = (str(added.Name), str(added.FullName), str(added.Path))
-    if not identity[0] or identity[1] != "":
-        raise ValueError("Added document is not a new unsaved drawing")
-    if any(str(item["name"]).casefold() == identity[0].casefold() for item in baseline):
-        raise ValueError("Added document name belongs to the existing drawing baseline")
     document = app.ActiveDocument
-    if (str(document.Name), str(document.FullName), str(document.Path)) != identity:
-        raise ValueError("Active document does not match the new drawing returned by Add")
     if document is not added:
         added_com = getattr(added, "_oleobj_", None)
         active_com = getattr(document, "_oleobj_", None)
         if added_com is None or active_com is None or added_com != active_com:
             raise ValueError("Active document COM identity does not match the Add result")
+    name = str(document.Name)
+    if not name or str(document.FullName) != "":
+        raise ValueError("Added document is not a new unsaved drawing")
+    if any(str(item["name"]).casefold() == name.casefold() for item in baseline):
+        raise ValueError("Added document name belongs to the existing drawing baseline")
     if _read_new_document_count(document) != 0:
         raise ValueError("The new active drawing template contains entities; stopped")
     if not callable(document.SaveAs) or not callable(document.SetVariable):
@@ -178,8 +176,6 @@ def _execute(action: str, app: Any, root: Path) -> dict[str, Any]:
         }
         _write_state(path, state)
         document = documents.Add()
-        if _read_new_document_count(document) != 0:
-            raise ValueError("The new drawing template contains entities; stopped")
         document = _bind_added_document(app, document, state["baseline"])
         for name, value in {
             "INSUNITS": 4,

@@ -58,14 +58,15 @@ failed evidence and use a fresh run for a new acceptance attempt.
 
 COM calls themselves are not forcibly cancellable. The active-document polling
 after `Open` is bounded to ten seconds; this does not bound `Open` itself.
-After a single `Add`, only reads of that new document's `ModelSpace.Count` retry
+After a single `Add`, only reads of the bound native document's `ModelSpace.Count` retry
 the integer COM-busy HRESULTs `-2147418111` and `-2147417846`, with a ten-second
 retry deadline and at most 0.1 seconds between reads. A read call itself cannot be
-forcibly cancelled. Preparation reacquires `ActiveDocument` to handle a generic
-`Add` return wrapper, but requires the same new name, empty `FullName`, matching
-`Path` and COM identity, and an empty model space; baseline names are rejected.
-An unsaved drawing's `Path` can contain AutoCAD's working directory, so it is
-compared between the two wrappers rather than required to be empty.
+forcibly cancelled. Preparation reacquires `ActiveDocument` and binds its COM
+identity to the opaque `Add` return wrapper (or accepts the same Python object).
+It reads no drawing properties from that generic wrapper. Only the bound native
+document is checked for a nonempty name outside the baseline, empty `FullName`
+and empty model space. An unsaved drawing's `Path` can contain AutoCAD's working
+directory and is not an unsaved-state guard.
 `SaveAs` and `SetVariable` must be callable before the seven variable writes and
 one `SaveAs`. No mutation is retried. Identity mismatch, another COM error or a
 read timeout leaves `preparing` without a successful event; inspect the failed

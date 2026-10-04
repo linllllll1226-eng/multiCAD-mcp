@@ -98,14 +98,14 @@ class ComReadError(RuntimeError):
 
 class GenericAddWrapper:
     def __init__(self, document):
-        """Keep COM identity and read properties but omit the SaveAs interface."""
-        self.document = document
+        """Expose only COM identity, as an opaque native Add wrapper can do."""
+        self._oleobj_ = getattr(document, "_oleobj_", None)
+        self._attribute_reads = []
 
     def __getattr__(self, name):
-        """Reproduce the generic Add wrapper that cannot expose SaveAs."""
-        if name == "SaveAs":
-            raise AttributeError("Add.SaveAs")
-        return getattr(self.document, name)
+        """Reject every document property and method on the generic wrapper."""
+        self._attribute_reads.append(name)
+        raise AttributeError(f"Add.{name}")
 
 
 class CountReadSequence:
@@ -392,11 +392,14 @@ def test_generic_add_wrapper_is_rebound_to_the_same_native_document_before_write
 ):
     app, root, formal = run
     original_add = app.Documents.Add
+    wrappers = []
 
     def add():
         document = original_add()
         document.Path = default_path
-        return GenericAddWrapper(document)
+        wrapper = GenericAddWrapper(document)
+        wrappers.append(wrapper)
+        return wrapper
 
     monkeypatch.setattr(app.Documents, "Add", add)
     result = acceptance.execute_lifecycle("prepare", app, root)
@@ -404,6 +407,7 @@ def test_generic_add_wrapper_is_rebound_to_the_same_native_document_before_write
     assert result["prepared"] is True
     assert result["drawing"]["entity_count"] == 0
     assert app.Documents.add_calls == 1
+    assert wrappers[0]._attribute_reads == []
     assert app.ActiveDocument.save_as_calls == [state(root)["path"]]
     assert app.ActiveDocument.writes.count("save") == 1
     assert len([entry for entry in app.ActiveDocument.writes if isinstance(entry, tuple)]) == 7
@@ -415,9 +419,10 @@ def test_generic_add_wrapper_is_rebound_to_the_same_native_document_before_write
 @pytest.mark.parametrize(
     "invalid",
     [
+        "empty_native_name",
         "baseline_name",
         "saved_fullname",
-        "different_active_path",
+        "different_wrapper_com_identity",
         "wrong_active_baseline",
         "wrong_active_other_empty",
         "wrong_active_same_name",
@@ -435,14 +440,15 @@ def test_unbound_add_or_active_document_never_receives_variables_or_save(run, mo
     def add():
         document = original_add()
         created.append(document)
-        if invalid == "baseline_name":
+        if invalid == "empty_native_name":
+            document.Name = ""
+        elif invalid == "baseline_name":
             document.Name = formal.Name
         elif invalid == "saved_fullname":
             document.FullName = str(root / "unrelated.dwg")
-        elif invalid == "different_active_path":
-            document.Path = r"D:\changed-working-directory"
+        elif invalid == "different_wrapper_com_identity":
             wrapper = GenericAddWrapper(document)
-            monkeypatch.setattr(wrapper, "Path", r"C:\Windows\system32")
+            wrapper._oleobj_ = object()
             return wrapper
         elif invalid == "wrong_active_baseline":
             app.ActiveDocument = formal
@@ -459,7 +465,7 @@ def test_unbound_add_or_active_document_never_receives_variables_or_save(run, mo
         elif invalid == "missing_com_identity":
             monkeypatch.delattr(document, "_oleobj_")
         else:
-            document.ModelSpace = CountReadSequence([0, 1])
+            document.ModelSpace.Count = 1
         return GenericAddWrapper(document)
 
     monkeypatch.setattr(app.Documents, "Add", add)
