@@ -93,6 +93,26 @@ def _clean_target(app: Any, state: dict[str, Any], root: Path) -> tuple[Any, dic
     return document, identity
 
 
+def _read_new_document_count(document: Any) -> int:
+    """Retry only busy COM reads on the same newly added document for ten seconds."""
+    deadline = time.monotonic() + 10.0
+    while True:
+        try:
+            return int(document.ModelSpace.Count)
+        except Exception as exc:
+            hresult = getattr(exc, "hresult", None)
+            if type(hresult) is not int or hresult not in {-2147418111, -2147417846}:
+                raise
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                time.sleep(min(0.1, remaining))
+                if time.monotonic() < deadline:
+                    continue
+            raise TimeoutError(
+                "New document entity-count read remained COM-busy for 10 seconds"
+            ) from exc
+
+
 def execute_lifecycle(action: str, app: Any, root: Path) -> dict[str, Any]:
     """Run one explicitly requested action on a fresh test DWG with a local state lock.
 
@@ -136,7 +156,7 @@ def _execute(action: str, app: Any, root: Path) -> dict[str, Any]:
         }
         _write_state(path, state)
         document = documents.Add()
-        if int(document.ModelSpace.Count) != 0:
+        if _read_new_document_count(document) != 0:
             raise ValueError("The new drawing template contains entities; stopped")
         for name, value in {
             "INSUNITS": 4,
