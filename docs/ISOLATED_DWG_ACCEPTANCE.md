@@ -58,10 +58,14 @@ failed evidence and use a fresh run for a new acceptance attempt.
 
 COM calls themselves are not forcibly cancellable. The active-document polling
 after `Open` is bounded to ten seconds; this does not bound `Open` itself.
-After a single `Add`, only reads of the bound native document's `ModelSpace.Count` retry
-the integer COM-busy HRESULTs `-2147418111` and `-2147417846`, with a ten-second
-retry deadline and at most 0.1 seconds between reads. A read call itself cannot be
-forcibly cancelled. Preparation reacquires `ActiveDocument` and binds its COM
+Read-only document enumeration, native document binding, clean saved-state
+observation and bound snapshot observation each have a ten-second retry deadline,
+with at most 0.1 seconds between attempts. Only `AttributeError` from temporarily
+unavailable COM members and integer COM-busy HRESULTs `-2147418111` and
+`-2147417846` retry; other errors and failed identity/state guards stop immediately.
+Each attempt reacquires the document objects and repeats the complete observation,
+without nested retry windows. A read call itself cannot be forcibly cancelled.
+Preparation performs one `Add`, reacquires `ActiveDocument` and binds its COM
 identity to the opaque `Add` return wrapper (or accepts the same Python object).
 It reads no drawing properties from that generic wrapper. Only the bound native
 document is checked for a nonempty name outside the baseline, empty `FullName`

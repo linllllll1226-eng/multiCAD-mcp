@@ -9,8 +9,10 @@ import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, TypeVar
 from uuid import uuid4
+
+_ReadT = TypeVar("_ReadT")
 
 
 def sha256(path: str | Path) -> str:
@@ -72,7 +74,10 @@ def _write_state(path: Path, state: dict[str, Any]) -> None:
 
 
 def _documents(app: Any) -> list[dict[str, Any]]:
-    return [file_identity(app.Documents.Item(i)) for i in range(app.Documents.Count)]
+    def observe() -> list[dict[str, Any]]:
+        return [file_identity(app.Documents.Item(i)) for i in range(app.Documents.Count)]
+
+    return _retry_document_read(observe)
 
 
 def _assert_baseline(app: Any, state: dict[str, Any], target: Path) -> list[dict[str, Any]]:
@@ -85,23 +90,30 @@ def _assert_baseline(app: Any, state: dict[str, Any], target: Path) -> list[dict
 
 
 def _clean_target(app: Any, state: dict[str, Any], root: Path) -> tuple[Any, dict[str, Any]]:
-    document = app.ActiveDocument
-    guard_target(state, root, document)
-    identity = file_identity(document)
-    if not identity["saved"] or identity["dbmod"] != 0:
-        raise ValueError("Test document is not in a clean saved state")
-    return document, identity
+    def observe() -> tuple[Any, dict[str, Any]]:
+        document = app.ActiveDocument
+        target = guard_target(state, root, document)
+        identity = file_identity(document)
+        if Path(identity["path"]).resolve() != target:
+            raise ValueError("Observed document does not match the generated test DWG")
+        if not identity["saved"] or identity["dbmod"] != 0:
+            raise ValueError("Test document is not in a clean saved state")
+        return document, identity
+
+    return _retry_document_read(observe)
 
 
-def _read_new_document_count(document: Any) -> int:
-    """Retry only busy COM reads on the same newly added document for ten seconds."""
+def _retry_document_read(observe: Callable[[], _ReadT]) -> _ReadT:
+    """Retry only transient COM observations within one ten-second read window."""
     deadline = time.monotonic() + 10.0
     while True:
         try:
-            return int(document.ModelSpace.Count)
+            return observe()
         except Exception as exc:
             hresult = getattr(exc, "hresult", None)
-            if type(hresult) is not int or hresult not in {-2147418111, -2147417846}:
+            if not isinstance(exc, AttributeError) and (
+                type(hresult) is not int or hresult not in {-2147418111, -2147417846}
+            ):
                 raise
             remaining = deadline - time.monotonic()
             if remaining > 0:
@@ -109,28 +121,32 @@ def _read_new_document_count(document: Any) -> int:
                 if time.monotonic() < deadline:
                     continue
             raise TimeoutError(
-                "New document entity-count read remained COM-busy for 10 seconds"
+                "Document observation remained COM-unavailable for 10 seconds"
             ) from exc
 
 
 def _bind_added_document(app: Any, added: Any, baseline: list[dict[str, Any]]) -> Any:
     """Reacquire a native document only when it is the same new empty COM object."""
-    document = app.ActiveDocument
-    if document is not added:
-        added_com = getattr(added, "_oleobj_", None)
-        active_com = getattr(document, "_oleobj_", None)
-        if added_com is None or active_com is None or added_com != active_com:
-            raise ValueError("Active document COM identity does not match the Add result")
-    name = str(document.Name)
-    if not name or str(document.FullName) != "":
-        raise ValueError("Added document is not a new unsaved drawing")
-    if any(str(item["name"]).casefold() == name.casefold() for item in baseline):
-        raise ValueError("Added document name belongs to the existing drawing baseline")
-    if _read_new_document_count(document) != 0:
-        raise ValueError("The new active drawing template contains entities; stopped")
-    if not callable(document.SaveAs) or not callable(document.SetVariable):
-        raise ValueError("New active document lacks callable SaveAs or SetVariable")
-    return document
+
+    def observe() -> Any:
+        document = app.ActiveDocument
+        if document is not added:
+            added_com = getattr(added, "_oleobj_", None)
+            active_com = getattr(document, "_oleobj_", None)
+            if added_com is None or active_com is None or added_com != active_com:
+                raise ValueError("Active document COM identity does not match the Add result")
+        name = str(document.Name)
+        if not name or str(document.FullName) != "":
+            raise ValueError("Added document is not a new unsaved drawing")
+        if any(str(item["name"]).casefold() == name.casefold() for item in baseline):
+            raise ValueError("Added document name belongs to the existing drawing baseline")
+        if int(document.ModelSpace.Count) != 0:
+            raise ValueError("The new active drawing template contains entities; stopped")
+        if not callable(document.SaveAs) or not callable(document.SetVariable):
+            raise ValueError("New active document lacks callable SaveAs or SetVariable")
+        return document
+
+    return _retry_document_read(observe)
 
 
 def execute_lifecycle(action: str, app: Any, root: Path) -> dict[str, Any]:
@@ -200,8 +216,16 @@ def _execute(action: str, app: Any, root: Path) -> dict[str, Any]:
         if action == "snapshot":
             if state.get("phase") not in {"prepared", "reopened"}:
                 raise ValueError("Snapshot requires a prepared or reopened test drawing")
-            guard_target(state, root, app.ActiveDocument)
-            result = {"drawing": file_identity(app.ActiveDocument)}
+
+            def observe_snapshot() -> dict[str, Any]:
+                document = app.ActiveDocument
+                target = guard_target(state, root, document)
+                identity = file_identity(document)
+                if Path(identity["path"]).resolve() != target:
+                    raise ValueError("Observed document does not match the generated test DWG")
+                return identity
+
+            result = {"drawing": _retry_document_read(observe_snapshot)}
         elif action in {"save_close", "reclose"}:
             expected_phase = "prepared" if action == "save_close" else "reopening"
             if state.get("phase") != expected_phase:

@@ -319,7 +319,7 @@ def test_persistent_busy_read_stops_at_deadline_without_mutations_or_success(
     error = ComReadError(hresult)
     reader = count_read_after_add(app, monkeypatch, [error])
 
-    with pytest.raises(TimeoutError, match="COM-busy for 10 seconds") as caught:
+    with pytest.raises(TimeoutError, match="COM-unavailable for 10 seconds") as caught:
         acceptance.execute_lifecycle("prepare", app, root)
 
     assert caught.value.__cause__ is error
@@ -373,13 +373,237 @@ def test_delayed_wakeup_does_not_retry_a_read_after_the_deadline(run, monkeypatc
     )
     reader = count_read_after_add(app, monkeypatch, [ComReadError(-2147418111), 0])
 
-    with pytest.raises(TimeoutError, match="COM-busy for 10 seconds"):
+    with pytest.raises(TimeoutError, match="COM-unavailable for 10 seconds"):
         acceptance.execute_lifecycle("prepare", app, root)
 
     assert reader.reads == 1
     assert app.Documents.add_calls == 1
     assert app.ActiveDocument.writes == []
     assert app.ActiveDocument.save_as_calls == []
+    assert state(root)["phase"] == "preparing"
+    assert state(root)["events"] == []
+    assert formal.writes == []
+    assert not (root / ".acceptance.lock").exists()
+
+
+@pytest.mark.parametrize("error", [ComReadError(-2147418111), AttributeError("<unknown>.Item")])
+def test_baseline_read_retries_the_whole_enumeration_with_fresh_items(run, monkeypatch, error):
+    app, root, formal = run
+    clock = controlled_retry_clock(monkeypatch)
+    other = Document(app, root.parent / "formal2.dwg", 9)
+    other.Save()
+    other.writes.clear()
+    app.Documents.items.append(other)
+    original_item = app.Documents.Item
+    indices = []
+
+    def item(index):
+        indices.append(index)
+        if indices == [0, 1]:
+            formal.ModelSpace.Count = 8
+            raise error
+        return original_item(index)
+
+    monkeypatch.setattr(app.Documents, "Item", item)
+    result = acceptance.execute_lifecycle("prepare", app, root)
+
+    assert result["prepared"] is True
+    assert indices == [0, 1, 0, 1, 0, 1, 2]
+    assert [entry["entity_count"] for entry in result["baseline"]] == [8, 9]
+    assert clock.sleeps == [0.1]
+    assert app.Documents.add_calls == 1
+    assert formal.writes == other.writes == []
+
+
+@pytest.mark.parametrize("error", [ComReadError(-2147418111), AttributeError("Item.ModelSpace")])
+def test_permanent_baseline_read_timeout_stops_before_add_or_any_mutation(run, monkeypatch, error):
+    app, root, formal = run
+    clock = controlled_retry_clock(monkeypatch)
+    calls = []
+
+    def item(index):
+        calls.append(index)
+        raise error
+
+    monkeypatch.setattr(app.Documents, "Item", item)
+    with pytest.raises(TimeoutError, match="COM-unavailable for 10 seconds") as caught:
+        acceptance.execute_lifecycle("prepare", app, root)
+
+    assert caught.value.__cause__ is error
+    assert clock.elapsed == pytest.approx(10.0)
+    assert 100 <= len(calls) <= 102
+    assert all(0 < duration <= 0.1 for duration in clock.sleeps)
+    assert app.Documents.add_calls == 0
+    assert formal.writes == formal.save_as_calls == []
+    assert not (root / "test_document_state.json").exists()
+    assert not (root / ".acceptance.lock").exists()
+
+
+def test_baseline_value_error_is_not_retried(run, monkeypatch):
+    app, root, formal = run
+    clock = controlled_retry_clock(monkeypatch)
+    error = ValueError("invalid baseline observation")
+    calls = []
+
+    def item(index):
+        calls.append(index)
+        raise error
+
+    monkeypatch.setattr(app.Documents, "Item", item)
+    with pytest.raises(ValueError) as caught:
+        acceptance.execute_lifecycle("prepare", app, root)
+
+    assert caught.value is error
+    assert calls == [0]
+    assert clock.sleeps == []
+    assert app.Documents.add_calls == 0
+    assert formal.writes == []
+    assert not (root / "test_document_state.json").exists()
+    assert not (root / ".acceptance.lock").exists()
+
+
+@pytest.mark.parametrize("member", ["Name", "ModelSpace", "SaveAs"])
+def test_native_add_observation_recovers_unavailable_member_before_any_write(
+    run, monkeypatch, member
+):
+    app, root, formal = run
+    clock = controlled_retry_clock(monkeypatch)
+    original_add = app.Documents.Add
+    observations = []
+
+    class NativeProxy:
+        def __init__(self, document):
+            self.document = document
+
+        def __getattr__(self, name):
+            if name == member:
+                observations.append(list(self.document.writes))
+                if len(observations) == 1:
+                    raise AttributeError(f"<unknown>.{name}")
+            return getattr(self.document, name)
+
+    def add():
+        document = original_add()
+        app.ActiveDocument = NativeProxy(document)
+        return GenericAddWrapper(document)
+
+    monkeypatch.setattr(app.Documents, "Add", add)
+    result = acceptance.execute_lifecycle("prepare", app, root)
+
+    assert result["prepared"] is True
+    assert observations[:2] == [[], []]
+    assert clock.sleeps == [0.1]
+    assert app.Documents.add_calls == 1
+    assert app.ActiveDocument.save_as_calls == [state(root)["path"]]
+    assert app.ActiveDocument.writes.count("save") == 1
+    assert formal.writes == []
+
+
+def test_native_retry_rebinds_com_identity_and_rejects_same_name_wrong_document(run, monkeypatch):
+    app, root, formal = run
+    clock = controlled_retry_clock(monkeypatch)
+    original_sleep = acceptance.time.sleep
+    reader = count_read_after_add(app, monkeypatch, [AttributeError("<unknown>.ModelSpace"), 0])
+    other = Document(app)
+
+    def sleep(seconds):
+        original_sleep(seconds)
+        app.ActiveDocument = other
+
+    monkeypatch.setattr(acceptance.time, "sleep", sleep)
+    with pytest.raises(ValueError, match="COM identity"):
+        acceptance.execute_lifecycle("prepare", app, root)
+
+    assert clock.sleeps == [0.1]
+    assert reader.reads == 1
+    assert app.Documents.add_calls == 1
+    assert app.Documents.items[-1].writes == other.writes == formal.writes == []
+    assert state(root)["phase"] == "preparing"
+    assert state(root)["events"] == []
+
+
+@pytest.mark.parametrize("operation", ["clean_target", "snapshot"])
+def test_bound_saved_observation_recovers_a_transient_read_without_writes(
+    run, monkeypatch, operation
+):
+    app, root, formal = run
+    acceptance.execute_lifecycle("prepare", app, root)
+    document = app.ActiveDocument
+    before = list(document.writes)
+    clock = controlled_retry_clock(monkeypatch)
+    document.ModelSpace = CountReadSequence([AttributeError("Item.ModelSpace"), 0])
+
+    if operation == "snapshot":
+        identity = acceptance.execute_lifecycle("snapshot", app, root)["drawing"]
+    else:
+        observed, identity = acceptance._clean_target(app, state(root), root)
+        assert observed is document
+
+    assert identity["path"] == state(root)["path"]
+    assert identity["entity_count"] == 0
+    assert clock.sleeps == [0.1]
+    assert document.writes == before
+    assert app.Documents.add_calls == 1
+    assert formal.writes == []
+
+
+@pytest.mark.parametrize("operation", ["clean_target", "snapshot"])
+def test_bound_observation_retry_rechecks_target_and_stops_on_guard_failure(
+    run, monkeypatch, operation
+):
+    app, root, formal = run
+    acceptance.execute_lifecycle("prepare", app, root)
+    document = app.ActiveDocument
+    before = list(document.writes)
+    before_state = state(root)
+    clock = controlled_retry_clock(monkeypatch)
+    original_sleep = acceptance.time.sleep
+    reader = CountReadSequence([AttributeError("Item.ModelSpace"), 0])
+    document.ModelSpace = reader
+
+    def sleep(seconds):
+        original_sleep(seconds)
+        app.ActiveDocument = formal
+
+    monkeypatch.setattr(acceptance.time, "sleep", sleep)
+    with pytest.raises(ValueError, match="Active document"):
+        if operation == "snapshot":
+            acceptance.execute_lifecycle("snapshot", app, root)
+        else:
+            acceptance._clean_target(app, state(root), root)
+
+    assert clock.sleeps == [0.1]
+    assert reader.reads == 1
+    assert state(root) == before_state
+    assert document.writes == before
+    assert formal.writes == []
+
+
+@pytest.mark.parametrize("error", [ComReadError(-2147418111), AttributeError("SaveAs unavailable")])
+def test_retryable_read_error_from_saveas_operation_is_never_retried(run, monkeypatch, error):
+    app, root, formal = run
+    clock = controlled_retry_clock(monkeypatch)
+    original_add = app.Documents.Add
+    calls = []
+
+    def save_as(path):
+        calls.append(path)
+        raise error
+
+    def add():
+        document = original_add()
+        document.SaveAs = save_as
+        return document
+
+    monkeypatch.setattr(app.Documents, "Add", add)
+    with pytest.raises(type(error)) as caught:
+        acceptance.execute_lifecycle("prepare", app, root)
+
+    assert caught.value is error
+    assert calls == [state(root)["path"]]
+    assert clock.sleeps == []
+    assert app.Documents.add_calls == 1
+    assert len(app.ActiveDocument.writes) == 7
     assert state(root)["phase"] == "preparing"
     assert state(root)["events"] == []
     assert formal.writes == []
