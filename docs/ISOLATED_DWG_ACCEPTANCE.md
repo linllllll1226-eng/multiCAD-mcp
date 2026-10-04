@@ -62,8 +62,10 @@ After a single `Add`, only reads of that new document's `ModelSpace.Count` retry
 the integer COM-busy HRESULTs `-2147418111` and `-2147417846`, with a ten-second
 retry deadline and at most 0.1 seconds between reads. A read call itself cannot be
 forcibly cancelled. Preparation reacquires `ActiveDocument` to handle a generic
-`Add` return wrapper, but requires the same new name, empty `FullName` and `Path`,
-matching COM identity and an empty model space; baseline names are rejected.
+`Add` return wrapper, but requires the same new name, empty `FullName`, matching
+`Path` and COM identity, and an empty model space; baseline names are rejected.
+An unsaved drawing's `Path` can contain AutoCAD's working directory, so it is
+compared between the two wrappers rather than required to be empty.
 `SaveAs` and `SetVariable` must be callable before the seven variable writes and
 one `SaveAs`. No mutation is retried. Identity mismatch, another COM error or a
 read timeout leaves `preparing` without a successful event; inspect the failed

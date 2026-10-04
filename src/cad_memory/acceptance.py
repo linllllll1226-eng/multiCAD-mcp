@@ -116,7 +116,7 @@ def _read_new_document_count(document: Any) -> int:
 def _bind_added_document(app: Any, added: Any, baseline: list[dict[str, Any]]) -> Any:
     """Reacquire a native document only when it is the same new empty COM object."""
     identity = (str(added.Name), str(added.FullName), str(added.Path))
-    if not identity[0] or identity[1:] != ("", ""):
+    if not identity[0] or identity[1] != "":
         raise ValueError("Added document is not a new unsaved drawing")
     if any(str(item["name"]).casefold() == identity[0].casefold() for item in baseline):
         raise ValueError("Added document name belongs to the existing drawing baseline")

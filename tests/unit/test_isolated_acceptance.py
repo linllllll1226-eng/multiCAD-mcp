@@ -386,12 +386,17 @@ def test_delayed_wakeup_does_not_retry_a_read_after_the_deadline(run, monkeypatc
     assert not (root / ".acceptance.lock").exists()
 
 
-def test_generic_add_wrapper_is_rebound_to_the_same_native_document_before_writes(run, monkeypatch):
+@pytest.mark.parametrize("default_path", ["", r"C:\Windows\system32"])
+def test_generic_add_wrapper_is_rebound_to_the_same_native_document_before_writes(
+    run, monkeypatch, default_path
+):
     app, root, formal = run
     original_add = app.Documents.Add
 
     def add():
-        return GenericAddWrapper(original_add())
+        document = original_add()
+        document.Path = default_path
+        return GenericAddWrapper(document)
 
     monkeypatch.setattr(app.Documents, "Add", add)
     result = acceptance.execute_lifecycle("prepare", app, root)
@@ -412,7 +417,7 @@ def test_generic_add_wrapper_is_rebound_to_the_same_native_document_before_write
     [
         "baseline_name",
         "saved_fullname",
-        "nonempty_path",
+        "different_active_path",
         "wrong_active_baseline",
         "wrong_active_other_empty",
         "wrong_active_same_name",
@@ -434,8 +439,11 @@ def test_unbound_add_or_active_document_never_receives_variables_or_save(run, mo
             document.Name = formal.Name
         elif invalid == "saved_fullname":
             document.FullName = str(root / "unrelated.dwg")
-        elif invalid == "nonempty_path":
-            document.Path = str(root)
+        elif invalid == "different_active_path":
+            document.Path = r"D:\changed-working-directory"
+            wrapper = GenericAddWrapper(document)
+            monkeypatch.setattr(wrapper, "Path", r"C:\Windows\system32")
+            return wrapper
         elif invalid == "wrong_active_baseline":
             app.ActiveDocument = formal
         elif invalid in {"wrong_active_other_empty", "wrong_active_same_name"}:
