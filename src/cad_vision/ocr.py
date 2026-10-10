@@ -44,7 +44,7 @@ def configured_ocr_det_max_side(value: int | None = None) -> int:
         if value is None
         else value
     )
-    if isinstance(setting, str):
+    if value is None and isinstance(setting, str):
         setting = setting.strip()
         if not setting.isascii() or not setting.isdecimal():
             raise ValueError("OCR detector max side must be an integer from 64 to 1536")

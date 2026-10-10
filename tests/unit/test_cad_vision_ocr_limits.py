@@ -13,7 +13,8 @@ from cad_vision import analyzer, ocr
 
 
 @pytest.mark.parametrize(
-    "value", [True, False, 0, -1, 63, 1537, 10**100, 960.0, float("nan"), float("inf")]
+    "value",
+    [True, False, 0, -1, 63, 1537, 10**100, 960.0, float("nan"), float("inf"), "960", "+960"],
 )
 def test_detector_limit_rejects_invalid_explicit_values(value: Any) -> None:
     """Reject values that cannot describe a bounded detector resolution."""
