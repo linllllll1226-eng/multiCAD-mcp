@@ -24,7 +24,9 @@ from .ocr_rotation import (
 )
 
 _PIPELINE_LOCK = threading.RLock()
-_PIPELINES: dict[tuple[str, str], Any] = {}
+_PIPELINES: dict[tuple[str, str, int], Any] = {}
+DEFAULT_OCR_DET_MAX_SIDE = 960
+MAX_OCR_DET_MAX_SIDE = 1536
 DEFAULT_MODEL_CACHE = data_directory() / "paddle_models"
 _LANGUAGE_ALIASES = {
     "eng": "en",
@@ -33,6 +35,23 @@ _LANGUAGE_ALIASES = {
     "zh-cn": "ch",
     "zh_cn": "ch",
 }
+
+
+def configured_ocr_det_max_side(value: int | None = None) -> int:
+    """Resolve a bounded detector size without accepting bools or noninteger input."""
+    setting: object = (
+        os.environ.get("MULTICAD_OCR_DET_MAX_SIDE", str(DEFAULT_OCR_DET_MAX_SIDE))
+        if value is None
+        else value
+    )
+    if isinstance(setting, str):
+        setting = setting.strip()
+        if not setting.isascii() or not setting.isdecimal():
+            raise ValueError("OCR detector max side must be an integer from 64 to 1536")
+        setting = int(setting)
+    if type(setting) is not int or not 64 <= setting <= MAX_OCR_DET_MAX_SIDE:
+        raise ValueError("OCR detector max side must be an integer from 64 to 1536")
+    return setting
 
 
 def _normalize_language(language: str) -> str:
@@ -84,7 +103,7 @@ def ocr_capabilities() -> dict[str, Any]:
     }
 
 
-def _create_pipeline(language: str, device: str) -> Any:
+def _create_pipeline(language: str, device: str, det_max_side: int) -> Any:
     _configure_runtime_paths()
     from paddleocr import PaddleOCR
 
@@ -96,15 +115,21 @@ def _create_pipeline(language: str, device: str) -> Any:
         use_doc_orientation_classify=False,
         use_doc_unwarping=False,
         use_textline_orientation=False,
+        text_det_limit_side_len=configured_ocr_det_max_side(det_max_side),
+        text_det_limit_type="max",
     )
 
 
-def _get_pipeline(language: str, device: str) -> Any:
+def _get_pipeline(language: str, device: str, det_max_side: int | None = None) -> Any:
     language = _normalize_language(language)
-    key = (language, device)
+    det_max_side = configured_ocr_det_max_side(det_max_side)
+    key = (language, device, det_max_side)
     with _PIPELINE_LOCK:
         if key not in _PIPELINES:
-            _PIPELINES[key] = _create_pipeline(language, device)
+            for cached in tuple(_PIPELINES):
+                if cached[:2] == key[:2]:
+                    _PIPELINES.pop(cached)
+            _PIPELINES[key] = _create_pipeline(language, device, det_max_side)
         return _PIPELINES[key]
 
 
@@ -114,9 +139,9 @@ def clear_pipeline_cache() -> None:
         _PIPELINES.clear()
 
 
-def _discard_pipeline(language: str, device: str) -> None:
+def _discard_pipeline(language: str, device: str, det_max_side: int) -> None:
     """Discard one possibly-corrupted native OCR pipeline after a runtime error."""
-    key = (_normalize_language(language), device)
+    key = (_normalize_language(language), device, det_max_side)
     with _PIPELINE_LOCK:
         _PIPELINES.pop(key, None)
 
@@ -129,20 +154,22 @@ def _predict_with_retry(
     device: str,
     min_confidence: float,
     pipeline_factory: Callable[[str, str], Any] | None,
+    det_max_side: int | None = None,
 ) -> tuple[Any, bool]:
     """Run PaddleOCR once, rebuilding its native pipeline for one safe retry."""
+    det_max_side = configured_ocr_det_max_side(det_max_side)
     try:
         return pipeline.predict(str(source), text_rec_score_thresh=min_confidence), False
     except Exception:
         if pipeline_factory is not None:
             raise
-        _discard_pipeline(language, device)
-        fresh_pipeline = _get_pipeline(language, device)
+        _discard_pipeline(language, device, det_max_side)
+        fresh_pipeline = _get_pipeline(language, device, det_max_side)
         try:
             result = fresh_pipeline.predict(str(source), text_rec_score_thresh=min_confidence)
         except Exception:
             # A failed rebuild is not safe to reuse on the next request.
-            _discard_pipeline(language, device)
+            _discard_pipeline(language, device, det_max_side)
             raise
         return result, True
 
@@ -307,6 +334,7 @@ def extract_ocr(
     unit_source: str | None = None,
     pdf_render_scale: float = 2.0,
     rotation_angles: list[int] | None = None,
+    det_max_side: int | None = None,
 ) -> dict[str, Any]:
     """Run local OCR and return text boxes plus parsed dimension candidates."""
     min_confidence = float(min_confidence)
@@ -314,6 +342,7 @@ def extract_ocr(
         raise ValueError("min_confidence must be between 0 and 1")
     language = _normalize_language(language)
     rotations = normalized_rotations(rotation_angles)
+    det_max_side = configured_ocr_det_max_side(det_max_side)
 
     capabilities = ocr_capabilities()
     if pipeline_factory is None and not capabilities["available"]:
@@ -331,7 +360,7 @@ def extract_ocr(
         pipeline = (
             pipeline_factory(language, device)
             if pipeline_factory is not None
-            else _get_pipeline(language, device)
+            else _get_pipeline(language, device, det_max_side)
         )
         page_numbers = sorted(set(page_numbers or [])) if page_numbers is not None else None
         regions = regions or {}
@@ -388,10 +417,11 @@ def extract_ocr(
                     device=device,
                     min_confidence=min_confidence,
                     pipeline_factory=pipeline_factory,
+                    det_max_side=det_max_side,
                 )
                 pipeline_rebuilt = pipeline_rebuilt or rebuilt
                 if rebuilt and pipeline_factory is None:
-                    pipeline = _get_pipeline(language, device)
+                    pipeline = _get_pipeline(language, device, det_max_side)
                 for fallback_page, raw_result in enumerate(raw_results):
                     if fallback_page >= max(1, min(int(max_pages), 50)):
                         break
@@ -500,6 +530,8 @@ def extract_ocr(
                 "regions": regions,
                 "pdf_render_scale": pdf_render_scale if pdf_selection else None,
                 "rotation_angles": rotations,
+                "text_det_limit_side_len": det_max_side,
+                "text_det_limit_type": "max",
             },
         }
         if include_samples:

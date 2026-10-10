@@ -394,3 +394,28 @@ def test_linear_dimension_allows_negative_offset_for_opposite_side(kind):
 def test_entity_schema_rejects_mistyped_dimension_field():
     report = validate([entity("line", {"start": [0, 0], "end": [1, 0]}, {"length": 1})])
     assert any(issue.code == "dimension_field_unsupported" for issue in report.errors)
+
+
+@pytest.mark.parametrize(
+    "kind", ["aligned_dimension", "linear_dimension", "diametric_dimension", "radial_dimension"]
+)
+@pytest.mark.parametrize(
+    "position", [[float("nan"), 1], [1, float("inf")], [1], [1, 2, 3, 4], None]
+)
+def test_created_dimension_text_position_must_be_finite_before_any_write(kind, position):
+    coordinates = {
+        "aligned_dimension": {"start": [0, 0], "end": [10, 0]},
+        "linear_dimension": {"start": [0, 0], "end": [10, 0]},
+        "diametric_dimension": {"chord_point": [-5, 0], "far_chord_point": [5, 0]},
+        "radial_dimension": {"center": [0, 0], "chord_point": [5, 0]},
+    }[kind]
+    coordinates["text_position"] = position
+    dimensions = {
+        "aligned_dimension": {},
+        "linear_dimension": {},
+        "diametric_dimension": {"diameter": 10},
+        "radial_dimension": {"radius": 5},
+    }[kind]
+    report = validate([entity(kind, coordinates, dimensions, layer="AI_PREVIEW_DIM")])
+    assert report.passed is False
+    assert "text_position_invalid" in {item.code for item in report.errors}

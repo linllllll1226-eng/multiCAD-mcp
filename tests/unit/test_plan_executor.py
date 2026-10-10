@@ -560,3 +560,161 @@ def test_refused_color_write_rolls_back_instead_of_reporting_a_styled_preview(ki
     assert result["rolled_back"] is True
     assert adapter.document.objects["C1"].deleted is True
     assert result["rollback_diagnostics"]["details"] == [{"handle": "C1", "status": "deleted"}]
+
+
+class PresentationDimension(CreatedEntity):
+    """Native dimension double with readback and independent presentation setters."""
+
+    def __init__(self, handle, object_type, points, *, fail_property=""):
+        """Keep native geometry and refused presentation properties inspectable."""
+        super().__init__(handle)
+        self.ObjectName = object_type
+        self.Layer = "AI_PREVIEW_DIM"
+        self.fail_property = fail_property
+        self.presentation_writes = []
+        self._text_height = 2.5
+        self._text_position = (0.0, 0.0, 0.0)
+        self.TextOverride = ""
+        self.TextFill = False
+        self.UseBackgroundColor = False
+        if object_type == "AcDbAlignedDimension":
+            self.ExtLine1Point, self.ExtLine2Point = points
+            self.Measurement = math.dist(*points)
+        else:
+            self.ChordPoint, self.FarChordPoint = points
+            self.Measurement = math.dist(*points)
+
+    @property
+    def TextHeight(self):  # noqa: N802 - AutoCAD COM spelling
+        return self._text_height
+
+    @TextHeight.setter
+    def TextHeight(self, value):  # noqa: N802 - AutoCAD COM spelling
+        if self.fail_property == "TextHeight":
+            raise RuntimeError("refused dimension TextHeight")
+        self.presentation_writes.append(("TextHeight", value))
+        self._text_height = value
+
+    @property
+    def TextPosition(self):  # noqa: N802 - AutoCAD COM spelling
+        return self._text_position
+
+    @TextPosition.setter
+    def TextPosition(self, value):  # noqa: N802 - AutoCAD COM spelling
+        if self.fail_property == "TextPosition":
+            raise RuntimeError("refused dimension TextPosition")
+        self.presentation_writes.append(("TextPosition", value))
+        self._text_position = value
+
+
+class PresentationAdapter:
+    """Create one inspectable native dimension through each real executor branch."""
+
+    def __init__(self, *, fail_property=""):
+        """Configure one native dimension with an optional refused setter."""
+        self.document = CreationDocument()
+        self.document.ModelSpace = self
+        self.fail_property = fail_property
+        self.converted_points = []
+
+    def list_layers(self):
+        return ["AI_PREVIEW_DIM"]
+
+    def _get_document(self, _operation):
+        return self.document
+
+    def _to_variant_array(self, point):
+        result = tuple(point)
+        self.converted_points.append(result)
+        return result
+
+    def _new_dimension(self, object_type, points):
+        entity = PresentationDimension("P1", object_type, points, fail_property=self.fail_property)
+        self.document.objects[entity.Handle] = entity
+        return entity
+
+    def add_dimension(self, start, end, *_args, **_kwargs):
+        return self._new_dimension("AcDbAlignedDimension", (tuple(start), tuple(end))).Handle
+
+    def AddDimDiametric(self, first, second, _leader):  # noqa: N802
+        return self._new_dimension("AcDbDiametricDimension", (tuple(first), tuple(second)))
+
+    @staticmethod
+    def refresh_view():
+        pass
+
+
+def _dimension_presentation_plan(kind, *, explicit=True):
+    coordinates = (
+        {"start": [0, 0, 0], "end": [20, 0, 0]}
+        if kind == "aligned_dimension"
+        else {"chord_point": [-5, 0, 0], "far_chord_point": [5, 0, 0]}
+    )
+    dimensions = {"measurement": 20} if kind == "aligned_dimension" else {"diameter": 10}
+    if explicit:
+        coordinates["text_position"] = [25, 15, 0]
+        dimensions["text_height"] = 3.25
+    return DrawingPlan.model_validate(
+        {
+            "task_name": "explicit-dimension-presentation",
+            "unit": "mm",
+            "user_confirmed": True,
+            "entities": [
+                {
+                    "entity_type": kind,
+                    "coordinates": coordinates,
+                    "dimensions": dimensions,
+                    "layer": "AI_PREVIEW_DIM",
+                    "dimension_source": "explicit_dimension",
+                    "confidence": 1,
+                }
+            ],
+        }
+    )
+
+
+@pytest.mark.parametrize("kind", ["aligned_dimension", "diametric_dimension"])
+def test_created_dimensions_apply_requested_text_style_and_verify_native_state(kind):
+    """The requested text properties survive real executor/native verifier paths."""
+    from cad_memory.verifier import PostExecutionVerifier
+
+    adapter = PresentationAdapter()
+    plan = _dimension_presentation_plan(kind)
+    result = PlanExecutor().execute(adapter, plan)
+    assert result["success"] is True
+    entity = adapter.document.objects["P1"]
+    assert entity.TextHeight == 3.25
+    assert entity.TextPosition == (25.0, 15.0, 0.0)
+    assert entity.presentation_writes == [("TextHeight", 3.25), ("TextPosition", (25.0, 15.0, 0.0))]
+    assert adapter.converted_points[-1] == (25.0, 15.0, 0.0)
+    assert entity.Measurement == (20 if kind == "aligned_dimension" else 10)
+    assert entity.TextOverride == ""
+    assert PostExecutionVerifier().verify(adapter, plan, result["handles"])["passed"] is True
+
+
+@pytest.mark.parametrize("kind", ["aligned_dimension", "diametric_dimension"])
+@pytest.mark.parametrize("property_name", ["TextHeight", "TextPosition"])
+def test_rejected_created_dimension_text_property_rolls_back_owned_handle(kind, property_name):
+    """A refused native setter cannot report success or strand the new entity."""
+    adapter = PresentationAdapter(fail_property=property_name)
+    result = PlanExecutor().execute(adapter, _dimension_presentation_plan(kind))
+    assert result["success"] is False
+    assert result["execution_error"] == f"refused dimension {property_name}"
+    assert result["handles"] == []
+    assert result["entity_records"] == []
+    assert result["rolled_back"] is True
+    assert result["rollback_diagnostics"]["attempted"] == ["P1"]
+    assert result["rollback_diagnostics"]["succeeded"] == ["P1"]
+    assert adapter.document.objects["P1"].deleted is True
+
+
+@pytest.mark.parametrize("kind", ["aligned_dimension", "diametric_dimension"])
+def test_dimension_text_defaults_are_not_assigned_without_explicit_plan_values(kind):
+    """Omitted presentation fields leave the native template defaults untouched."""
+    adapter = PresentationAdapter()
+    result = PlanExecutor().execute(adapter, _dimension_presentation_plan(kind, explicit=False))
+    assert result["success"] is True
+    entity = adapter.document.objects["P1"]
+    assert entity.TextHeight == 2.5
+    assert entity.TextPosition == (0.0, 0.0, 0.0)
+    assert entity.presentation_writes == []

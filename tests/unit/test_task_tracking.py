@@ -280,6 +280,7 @@ def _seed_reconstruction_task(
             "source_sha256": source_sha256,
             "pipeline_version": "test-v1",
             "manifest_required": True,
+            "manifest_label_completeness": True,
             "expected_manifest_sha256": canonical_manifest_hash(expected_manifest),
         },
         "entities": [
@@ -556,6 +557,7 @@ def test_reconstruction_commit_requires_trusted_complete_source_audit(tmp_path, 
     adapter = FakeAdapter(FakeDocument([entity]))
     store = SQLiteMemoryStore(tmp_path / "memory.db")
     incomplete_manifest = {
+        "complete_annotation": True,
         "minimum_counts": {"circle": 1},
         "required_circles": [{"center": [0.0, 0.0], "radius": 5.0}],
         "required_annotations": [{"text": "THRU", "match": "contains"}],
@@ -591,6 +593,7 @@ def test_reconstruction_commit_requires_trusted_complete_source_audit(tmp_path, 
     assert manager.commit_preview_task(adapter, "task-source", confirmed=True)["blocked"]
 
     weakened_manifest = {
+        "complete_annotation": True,
         "minimum_counts": {"circle": 1},
         "required_circles": [{"center": [0.0, 0.0], "radius": 5.0}],
         "provenance": incomplete_manifest["provenance"],
@@ -618,6 +621,7 @@ def test_reconstruction_commit_rejects_entity_changes_after_bound_audit(tmp_path
     source_sha = hashlib.sha256(source.read_bytes()).hexdigest()
     monkeypatch.setenv("MULTICAD_AUDIT_OUTPUT_ROOT", str(tmp_path / "audit"))
     complete_manifest = {
+        "complete_annotation": True,
         "minimum_counts": {"circle": 1},
         "required_circles": [{"center": [0.0, 0.0], "radius": 5.0}],
         "provenance": {
@@ -666,6 +670,7 @@ def test_reconstruction_commit_rejects_stale_plan_source_and_artifact(tmp_path, 
     source_sha = hashlib.sha256(original_source).hexdigest()
     monkeypatch.setenv("MULTICAD_AUDIT_OUTPUT_ROOT", str(tmp_path / "audit"))
     manifest = {
+        "complete_annotation": True,
         "minimum_counts": {"circle": 1},
         "required_circles": [{"center": [0.0, 0.0], "radius": 5.0}],
         "provenance": {
@@ -990,3 +995,199 @@ def test_persistence_failure_rollback_reports_non_owned_handles():
     assert result["failed"][0]["handle"] == "USER"
     assert result["failed"][0]["stage"] == "ownership"
     assert user.deleted is False
+
+
+def _source_completeness_case(tmp_path, monkeypatch, case):
+    """Seed source declarations independently from the audit decision under test."""
+    import hashlib
+
+    from PIL import Image
+
+    source = tmp_path / "source.png"
+    Image.new("RGB", (120, 120), "white").save(source)
+    source_sha = hashlib.sha256(source.read_bytes()).hexdigest()
+    monkeypatch.setenv("MULTICAD_AUDIT_OUTPUT_ROOT", str(tmp_path / "audit"))
+    manifest = {
+        "complete_annotation": True,
+        "minimum_counts": {"circle": 1},
+        "required_circles": [{"center": [0.0, 0.0], "radius": 5.0}],
+        "provenance": {
+            "generated_by": "cad_prepare_reconstruction",
+            "source_sha256": source_sha,
+            "pipeline_version": "test-v1",
+        },
+    }
+    if case == "manifest_false":
+        manifest["complete_annotation"] = False
+    elif case == "manifest_missing":
+        del manifest["complete_annotation"]
+    elif case == "partial_schema":
+        manifest["schema_version"] = "independent-partial-source-preview/1"
+    elif case == "manifest_boolean_string":
+        manifest["complete_annotation"] = "false"
+    elif case == "manifest_numeric_boolean":
+        manifest["complete_annotation"] = 1
+    elif case == "manifest_truncated":
+        manifest["truncated"] = True
+    elif case == "nested_partial":
+        manifest["provenance"]["partial_source_preview"] = True
+    elif case == "unconfirmed_manifest_record":
+        manifest["required_circles"][0]["needs_confirmation"] = True
+    entity = FakeEntity(
+        "A1",
+        "AI_UNCERTAIN"
+        if case in {"entity_uncertainty", "approximate", "uncertain_layer"}
+        else "AI_PREVIEW_OUTLINE",
+    )
+    adapter = FakeAdapter(FakeDocument([entity]))
+    store = SQLiteMemoryStore(tmp_path / "memory.db")
+    original_create = store.create_ai_task
+
+    def create_with_declarations(*args, **kwargs):
+        plan = kwargs["plan_data"]
+        provenance = plan["source_provenance"]
+        if case == "partial":
+            provenance["partial_source_preview"] = True
+        elif case == "labels_false":
+            provenance["manifest_label_completeness"] = False
+        elif case == "labels_missing":
+            del provenance["manifest_label_completeness"]
+        elif case == "whole_false":
+            provenance["whole_source_reconstruction_gate_passed"] = False
+        elif case == "plan_uncertainty":
+            plan["uncertain_items"] = ["Unresolved source dimension"]
+        elif case in {"entity_uncertainty", "approximate"}:
+            plan["entities"][0]["layer"] = "AI_UNCERTAIN"
+            if case == "entity_uncertainty":
+                plan["entities"][0]["uncertain_items"] = ["Unresolved source semantics"]
+            else:
+                plan["entities"][0]["dimension_source"] = "approximate_reference"
+        elif case == "source_boolean_string":
+            provenance["partial_source_preview"] = "false"
+        elif case == "source_numeric_boolean":
+            provenance["manifest_label_completeness"] = 1
+        elif case == "source_truncated":
+            provenance["truncated"] = True
+        elif case == "source_uncertainty":
+            provenance["uncertain_items"] = ["Unreviewed source note"]
+        elif case == "uncertain_layer":
+            plan["entities"][0]["layer"] = "AI_UNCERTAIN"
+        return original_create(*args, **kwargs)
+
+    monkeypatch.setattr(store, "create_ai_task", create_with_declarations)
+    _seed_reconstruction_task(store, adapter, "task-declarations", entity, source_sha, manifest)
+    return TaskTrackingManager(store), adapter, entity, manifest, source
+
+
+@pytest.mark.parametrize(
+    "case,expected_code",
+    [
+        ("partial", "incomplete_source_declaration"),
+        ("labels_false", "source_labels_not_complete"),
+        ("whole_false", "incomplete_source_declaration"),
+        ("plan_uncertainty", "plan_uncertainty"),
+        ("entity_uncertainty", "entity_uncertainty"),
+        ("manifest_false", "manifest_labels_not_complete"),
+        ("partial_schema", "partial_source_scope"),
+        ("approximate", "approximate_source_geometry"),
+        ("labels_missing", "source_labels_not_complete"),
+        ("manifest_missing", "manifest_labels_not_complete"),
+        ("source_boolean_string", "invalid_completeness_declaration"),
+        ("manifest_boolean_string", "manifest_labels_not_complete"),
+        ("manifest_numeric_boolean", "invalid_completeness_declaration"),
+        ("source_numeric_boolean", "invalid_completeness_declaration"),
+        ("manifest_truncated", "incomplete_source_declaration"),
+        ("source_truncated", "incomplete_source_declaration"),
+        ("source_uncertainty", "source_uncertainty"),
+        ("uncertain_layer", "approximate_source_geometry"),
+        ("nested_partial", "incomplete_source_declaration"),
+        ("unconfirmed_manifest_record", "unconfirmed_manifest_record"),
+    ],
+)
+def test_explicit_incomplete_sources_never_pass_audit_or_commit(
+    tmp_path, monkeypatch, case, expected_code
+):
+    """Matching source/manifest hashes cannot override known incompleteness."""
+    manager, adapter, entity, manifest, source = _source_completeness_case(
+        tmp_path, monkeypatch, case
+    )
+    original_layer = entity.Layer
+    audit = manager.render_task_audit(
+        adapter,
+        "task-declarations",
+        expected_manifest=manifest,
+        source_path=str(source),
+    )
+    gate = audit["audit_gate"]
+    assert gate["trusted_manifest"] is False
+    assert gate["passed"] is False
+    assert gate["source_completeness"]["passed"] is False
+    assert expected_code in {item["code"] for item in gate["source_completeness"]["blockers"]}
+    assert manager.store.get_ai_task("task-declarations")["audit_data"] == gate
+    for confirmed in (False, True):
+        result = manager.commit_preview_task(adapter, "task-declarations", confirmed=confirmed)
+        assert result["blocked"] is True
+        assert result["success"] is False
+        assert result["source_completeness_blockers"]
+    assert entity.Layer == original_layer
+    assert adapter.document.undo_started == 0
+
+
+@pytest.mark.parametrize(
+    "case", ["partial", "labels_false", "whole_false", "plan_uncertainty", "entity_uncertainty"]
+)
+def test_commit_rechecks_incomplete_plan_even_with_cached_passing_audit(
+    tmp_path, monkeypatch, case
+):
+    """A stale or pre-upgrade passing audit cannot erase current source blockers."""
+    from cad_memory.task_manager import SOURCE_COMPLETENESS_VERSION
+
+    manager, adapter, entity, manifest, source = _source_completeness_case(
+        tmp_path, monkeypatch, case
+    )
+    audit = manager.render_task_audit(
+        adapter, "task-declarations", expected_manifest=manifest, source_path=str(source)
+    )["audit_gate"]
+    cached = {
+        **audit,
+        "passed": True,
+        "trusted_manifest": True,
+        "source_completeness": {
+            "version": SOURCE_COMPLETENESS_VERSION,
+            "passed": True,
+            "manifest_annotation_complete": True,
+            "blockers": [],
+        },
+    }
+    manager.store.update_ai_task("task-declarations", status="verified", audit_data=cached)
+    original_layer = entity.Layer
+    for confirmed in (False, True):
+        result = manager.commit_preview_task(adapter, "task-declarations", confirmed=confirmed)
+        assert result["blocked"] is True
+        assert any(
+            item["path"].startswith(("source_provenance", "plan."))
+            for item in result["source_completeness_blockers"]
+        )
+    assert entity.Layer == original_layer
+    assert adapter.document.undo_started == 0
+
+
+def test_pre_upgrade_source_audit_requires_fresh_complete_declarations(tmp_path, monkeypatch):
+    """An old passing audit lacks the mandatory completeness-contract result."""
+    manager, adapter, entity, manifest, source = _source_completeness_case(
+        tmp_path, monkeypatch, "complete"
+    )
+    audit = manager.render_task_audit(
+        adapter, "task-declarations", expected_manifest=manifest, source_path=str(source)
+    )["audit_gate"]
+    assert audit["passed"] is True
+    del audit["source_completeness"]
+    manager.store.update_ai_task("task-declarations", status="verified", audit_data=audit)
+    for confirmed in (False, True):
+        result = manager.commit_preview_task(adapter, "task-declarations", confirmed=confirmed)
+        assert result["blocked"] is True
+        assert {item["code"] for item in result["source_completeness_blockers"]} == {
+            "complete_source_audit_required"
+        }
+    assert entity.Layer == "AI_PREVIEW_OUTLINE"
+    assert adapter.document.undo_started == 0

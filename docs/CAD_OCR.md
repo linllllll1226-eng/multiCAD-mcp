@@ -60,7 +60,7 @@ The recognition-completeness scorer refuses unconfirmed predictions.
 Original image files and PDF files are never changed. Rotated temporary PNGs
 are removed after success or failure. Multi-frame raster input is rejected for
 rotation probes rather than silently selecting its first frame. The vision
-cache version is 1.6.0 and normalized rotation settings are part of the cache key.
+cache version is 1.10.0 and normalized rotation settings are part of the cache key.
 OCR output includes explicit text/dimension truncation flags; candidates remain
 bounded evidence rather than an exhaustive reconstruction.
 
@@ -80,6 +80,33 @@ Compact and detailed-sample requests share one canonical cache entry. The OCR
 pipeline also discards and rebuilds one corrupted native inference object after a
 runtime error, then retries exactly once. User-injected/test providers are never
 retried silently.
+
+## Detector resource profile
+
+The local PaddleOCR detector now uses `text_det_limit_type="max"` with a default
+maximum image side of 960 pixels. This bounds detector input on large scans;
+small annotations can lose detail, so compare retained raw results and review
+conflicts rather than choosing a dimension solely by confidence.
+
+Set `MULTICAD_OCR_DET_MAX_SIDE` before starting the MCP process to override this
+profile. Only integer values from 64 to 1536 are accepted. The Python
+`analyze_source` API also accepts `ocr_det_max_side`; an explicit value takes
+precedence over the environment. This adds no MCP tool or tool parameter. An OCR
+policy of `off` does not parse or apply the detector setting.
+
+Both the native pipeline key and the persistent result fingerprint include the
+resolved detector size; the result also reports the size and `max` limit type.
+Changing sizes evicts the old pipeline for that language and device. Retry uses
+the same resolved profile. Previous factory-default OCR cache entries cannot be
+used as results from this profile. The backend, CPU threading and confidence
+thresholds are otherwise unchanged.
+
+Native Windows experiments on the large turned-part pilot completed the default
+and 0/90/270-degree calls at 960 pixels. The earlier factory profile and the
+1536-pixel rotated run exceeded the local memory guard; those failures remain
+part of the evidence. The permitted configuration range is not a promise that
+every value fits every machine. These pilot observations do not establish
+exhaustive private-corpus accuracy or confirm conflicting values such as `12/2`.
 
 Returned OCR evidence includes text, confidence, page-coordinate bounding box,
 page number, and parsed engineering candidates such as diameter, radius, linear

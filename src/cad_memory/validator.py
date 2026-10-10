@@ -606,6 +606,18 @@ class PlanValidator:
         """Enforce native dimension and presentation restrictions."""
         if kind not in DIMENSION_TYPES:
             return
+        if (
+            entity.operation == "create"
+            and "text_position" in entity.coordinates
+            and _point(entity.coordinates["text_position"]) is None
+        ):
+            report.errors.append(
+                ValidationIssue(
+                    "text_position_invalid",
+                    "Dimension text_position must contain finite 2D or 3D coordinates",
+                    index,
+                )
+            )
         if entity.background_fill:
             report.errors.append(
                 ValidationIssue(

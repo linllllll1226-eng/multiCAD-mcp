@@ -17,12 +17,12 @@ from cad_runtime import data_directory
 
 from .dimensions import normalize_length_unit
 from .image import analyze_image_geometry
-from .ocr import extract_ocr, ocr_capabilities
+from .ocr import configured_ocr_det_max_side, extract_ocr, ocr_capabilities
 from .ocr_rotation import normalized_rotations
 from .pdf import extract_vector_pdf
 from .pdf_raster import add_raster_geometry
 
-PIPELINE_VERSION = "1.9.1"
+PIPELINE_VERSION = "1.10.0"
 SUPPORTED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 OCR_POLICIES = {"off", "auto", "force"}
 OCR_RUNTIME_PROFILE = {
@@ -134,7 +134,9 @@ def _safe_distribution_version(distribution: str) -> str | None:
         return None
 
 
-def _runtime_fingerprint(*, suffix: str, ocr_policy: str) -> dict[str, Any]:
+def _runtime_fingerprint(
+    *, suffix: str, ocr_policy: str, ocr_det_max_side: int | None = None
+) -> dict[str, Any]:
     """Describe result-affecting local providers for deterministic cache isolation."""
     if suffix == ".pdf":
         source_provider: dict[str, Any] = {
@@ -154,6 +156,8 @@ def _runtime_fingerprint(*, suffix: str, ocr_policy: str) -> dict[str, Any]:
     if ocr_policy != "off":
         fingerprint["ocr"] = {
             **OCR_RUNTIME_PROFILE,
+            "text_det_limit_side_len": configured_ocr_det_max_side(ocr_det_max_side),
+            "text_det_limit_type": "max",
             "provider_version": _safe_distribution_version("paddleocr"),
             "runtime": "paddlepaddle",
             "runtime_version": _safe_distribution_version("paddlepaddle"),
@@ -348,6 +352,7 @@ def analyze_source(
     source_unit: str | None = None,
     drawing_unit: str | None = None,
     ocr_rotation_angles: list[int] | None = None,
+    ocr_det_max_side: int | None = None,
 ) -> dict[str, Any]:
     """Analyze a local CAD source and return a compact structured result."""
     started = time.perf_counter()
@@ -355,6 +360,9 @@ def analyze_source(
     max_pages = max(1, min(int(max_pages), 50))
     policy = _normalized_ocr_policy(use_ocr=use_ocr, ocr_policy=ocr_policy)
     rotations = normalized_rotations(ocr_rotation_angles)
+    resolved_det_max_side = (
+        configured_ocr_det_max_side(ocr_det_max_side) if policy != "off" else None
+    )
     raster_page_threshold = float(raster_page_threshold)
     raster_region_threshold = float(raster_region_threshold)
     if not 0.0 <= raster_page_threshold <= 1.0:
@@ -363,7 +371,9 @@ def analyze_source(
         raise ValueError("raster_region_threshold must be between 0 and 1")
     unit_resolution = _unit_resolution(source_unit, drawing_unit)
     digest = _digest(source)
-    runtime_fingerprint = _runtime_fingerprint(suffix=source.suffix.lower(), ocr_policy=policy)
+    runtime_fingerprint = _runtime_fingerprint(
+        suffix=source.suffix.lower(), ocr_policy=policy, ocr_det_max_side=resolved_det_max_side
+    )
     options = {
         "pipeline_version": PIPELINE_VERSION,
         "max_pages": max_pages,
@@ -447,6 +457,7 @@ def analyze_source(
             default_unit=unit_resolution["unit"],
             unit_source=unit_resolution["unit_source"],
             rotation_angles=rotations,
+            det_max_side=resolved_det_max_side,
         )
     elif policy == "off":
         analysis["ocr"] = {

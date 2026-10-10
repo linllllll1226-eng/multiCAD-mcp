@@ -248,7 +248,7 @@ def test_failed_retry_discards_rebuilt_pipeline_from_cache(
     first = BrokenPipeline()
     rebuilt = BrokenPipeline()
     ocr_module.clear_pipeline_cache()
-    ocr_module._PIPELINES[("ch", "cpu")] = first
+    ocr_module._PIPELINES[("ch", "cpu", 960)] = first
     monkeypatch.setattr(
         ocr_module,
         "ocr_capabilities",
@@ -257,13 +257,13 @@ def test_failed_retry_discards_rebuilt_pipeline_from_cache(
     monkeypatch.setattr(
         ocr_module,
         "_create_pipeline",
-        lambda language, device: rebuilt,
+        lambda language, device, det_max_side: rebuilt,
     )
 
     try:
         result = extract_ocr(source)
         assert result["status"] == "error"
         assert result["error"] == "native pipeline failed"
-        assert ("ch", "cpu") not in ocr_module._PIPELINES
+        assert ("ch", "cpu", 960) not in ocr_module._PIPELINES
     finally:
         ocr_module.clear_pipeline_cache()

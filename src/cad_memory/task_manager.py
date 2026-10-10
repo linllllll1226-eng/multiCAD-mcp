@@ -76,6 +76,131 @@ def _source_audit_required(task: dict[str, Any]) -> bool:
     )
 
 
+SOURCE_COMPLETENESS_VERSION = "source-completeness-declarations-v1"
+
+
+def _source_completeness_blockers(
+    plan: dict[str, Any],
+    manifest: dict[str, Any] | None = None,
+    records: list[dict[str, Any]] | None = None,
+) -> list[dict[str, str]]:
+    """Reject incomplete source declarations independently of byte binding."""
+    blockers: list[dict[str, str]] = []
+
+    def block(code: str, path: str, reason: str) -> None:
+        blockers.append({"code": code, "path": path, "reason": reason})
+
+    provenance = plan.get("source_provenance") or {}
+    if provenance.get("manifest_label_completeness") is not True:
+        block(
+            "source_labels_not_complete",
+            "source_provenance.manifest_label_completeness",
+            "Exhaustive reviewed source labels must be explicitly declared true.",
+        )
+    scopes = [("source_provenance", provenance)]
+    if manifest is not None:
+        if manifest.get("complete_annotation") is not True:
+            block(
+                "manifest_labels_not_complete",
+                "manifest.complete_annotation",
+                "Exhaustive manifest annotation must be explicitly declared true.",
+            )
+        scopes.extend(
+            [
+                ("manifest", manifest),
+                ("manifest.provenance", manifest.get("provenance") or {}),
+            ]
+        )
+    for path, scope in scopes:
+        for key, prohibited in (
+            ("partial_source_preview", True),
+            ("manifest_label_completeness", False),
+            ("whole_source_reconstruction_gate_passed", False),
+            ("complete_annotation", False),
+            ("truncated", True),
+        ):
+            if key not in scope:
+                continue
+            value = scope[key]
+            if type(value) is not bool:
+                block(
+                    "invalid_completeness_declaration",
+                    f"{path}.{key}",
+                    "Completeness declarations must be JSON booleans.",
+                )
+            elif value is prohibited:
+                block(
+                    "incomplete_source_declaration",
+                    f"{path}.{key}",
+                    "An explicit partial, incomplete or truncated declaration blocks commit.",
+                )
+        for key in ("scope", "schema_version"):
+            value = scope.get(key)
+            if isinstance(value, str) and "partial" in value.casefold():
+                block(
+                    "partial_source_scope",
+                    f"{path}.{key}",
+                    "A partial source scope cannot establish whole-source completeness.",
+                )
+        if scope.get("uncertain_items"):
+            block(
+                "source_uncertainty",
+                f"{path}.uncertain_items",
+                "Unresolved source uncertainty blocks whole-source completeness.",
+            )
+    if plan.get("uncertain_items"):
+        block(
+            "plan_uncertainty",
+            "plan.uncertain_items",
+            "Unresolved plan uncertainty blocks whole-source completeness.",
+        )
+    for index, entity in enumerate(plan.get("entities") or []):
+        path = f"plan.entities[{index}]"
+        if entity.get("uncertain_items"):
+            block("entity_uncertainty", path, "An entity still has unresolved source uncertainty.")
+        if (
+            str(entity.get("layer") or "").casefold() == "ai_uncertain"
+            or entity.get("dimension_source") == "approximate_reference"
+        ):
+            block(
+                "approximate_source_geometry",
+                path,
+                "AI_UNCERTAIN and approximate-reference geometry cannot establish completeness.",
+            )
+    for index, record in enumerate(records or []):
+        actual = record.get("actual") or {}
+        if str(actual.get("layer") or "").casefold() == "ai_uncertain" or record.get(
+            "approximate_reference"
+        ):
+            block(
+                "observed_uncertain_geometry",
+                f"records[{index}]",
+                "Observed uncertain geometry cannot establish source completeness.",
+            )
+    if manifest is not None:
+        for category in (
+            "required_segments",
+            "required_circles",
+            "required_annotations",
+            "geometry",
+            "texts",
+            "dimensions",
+        ):
+            for index, record in enumerate(manifest.get(category) or []):
+                if not isinstance(record, dict):
+                    continue
+                if "needs_confirmation" not in record:
+                    continue
+                value = record["needs_confirmation"]
+                if type(value) is not bool or value:
+                    block(
+                        "unconfirmed_manifest_record",
+                        f"manifest.{category}[{index}].needs_confirmation",
+                        "A required source record is unconfirmed or has an invalid review flag.",
+                    )
+    return blockers
+
+
 def _geometry_signature(entity: Any) -> dict[str, Any]:
     """Select geometric and measurement properties protected during layer changes."""
     state = read_entity_state(entity)
@@ -349,6 +474,16 @@ class TaskTrackingManager:
         result["source_entity_count"] = len(records)
         source_provenance = (task.get("plan_data") or {}).get("source_provenance") or {}
         manifest_provenance = (expected_manifest or {}).get("provenance") or {}
+        completeness_blockers = _source_completeness_blockers(
+            task.get("plan_data") or {}, expected_manifest or {}, records
+        )
+        source_completeness = {
+            "version": SOURCE_COMPLETENESS_VERSION,
+            "passed": not completeness_blockers,
+            "manifest_annotation_complete": (expected_manifest or {}).get("complete_annotation")
+            is True,
+            "blockers": completeness_blockers,
+        }
         expected_source_sha = str(source_provenance.get("source_sha256") or "")
         expected_manifest_sha = str(source_provenance.get("expected_manifest_sha256") or "")
         actual_manifest_sha = canonical_manifest_hash(expected_manifest or {})
@@ -363,6 +498,7 @@ class TaskTrackingManager:
             and manifest_provenance.get("pipeline_version")
             == source_provenance.get("pipeline_version")
             and actual_source_sha == expected_source_sha
+            and source_completeness["passed"]
         )
         comparison_path = str(result.get("comparison_path") or "")
         artifact_present = bool(comparison_path and Path(comparison_path).is_file())
@@ -380,6 +516,7 @@ class TaskTrackingManager:
             "required": _source_audit_required(task),
             "passed": audit_passed,
             "trusted_manifest": trusted_manifest,
+            "source_completeness": source_completeness,
             "plan_hash": canonical_plan_hash(task["plan_data"]),
             "source_sha256": actual_source_sha,
             "source_path": str(Path(source_path).resolve()) if source_path else "",
@@ -429,6 +566,31 @@ class TaskTrackingManager:
             audit_data = task.get("audit_data") or {}
             source_provenance = (task.get("plan_data") or {}).get("source_provenance") or {}
             current_plan_hash = canonical_plan_hash(task["plan_data"])
+            completeness_blockers = _source_completeness_blockers(task["plan_data"])
+            completeness = audit_data.get("source_completeness") or {}
+            if (
+                completeness.get("version") != SOURCE_COMPLETENESS_VERSION
+                or completeness.get("passed") is not True
+                or completeness.get("manifest_annotation_complete") is not True
+                or completeness.get("blockers")
+            ):
+                completeness_blockers.append(
+                    {
+                        "code": "complete_source_audit_required",
+                        "path": "audit_data.source_completeness",
+                        "reason": (
+                            "A fresh audit with explicit complete-label declarations is required."
+                        ),
+                    }
+                )
+            if completeness_blockers:
+                return {
+                    "success": False,
+                    "blocked": True,
+                    "reason": "Source-completeness audit has unresolved completeness conditions",
+                    "source_completeness_blockers": completeness_blockers,
+                    "audit_gate": audit_data,
+                }
             evidence_passed = bool(
                 audit_data.get("passed")
                 and audit_data.get("trusted_manifest")

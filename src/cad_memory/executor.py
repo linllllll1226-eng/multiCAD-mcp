@@ -108,7 +108,7 @@ class PlanExecutor:
                         # immediately after the underlying CAD Add* call.
                         register_created(handle)
                     cad_object = document.HandleToObject(handle)
-                    self._finalize_entity(entity, cad_object)
+                    self._finalize_entity(adapter, entity, cad_object)
                     if task_id and owned:
                         if execution_result_id is None:
                             raise ValueError("execution_result_id is required for task provenance")
@@ -352,7 +352,7 @@ class PlanExecutor:
         raise ValueError(f"Unsupported execution entity type: {kind}")
 
     @staticmethod
-    def _finalize_entity(entity: EntityPlan, cad_object: Any) -> None:
+    def _finalize_entity(adapter: Any, entity: EntityPlan, cad_object: Any) -> None:
         """Apply post-create properties after the handle is owned for rollback."""
         if entity.operation != "create":
             return
@@ -361,6 +361,18 @@ class PlanExecutor:
         # objects, so a refused color write follows the existing rollback path.
         cad_object.Color = 256
         kind = entity.entity_type.lower()
+        if kind in {
+            "aligned_dimension",
+            "linear_dimension",
+            "diametric_dimension",
+            "radial_dimension",
+        }:
+            if "text_height" in entity.dimensions:
+                cad_object.TextHeight = float(entity.dimensions["text_height"])
+            if "text_position" in entity.coordinates:
+                cad_object.TextPosition = adapter._to_variant_array(
+                    _coord(entity.coordinates["text_position"])
+                )
         if kind in {"diametric_dimension", "radial_dimension"}:
             cad_object.Layer = entity.layer
             _set_if_supported(cad_object, "Linetype", entity.linetype)

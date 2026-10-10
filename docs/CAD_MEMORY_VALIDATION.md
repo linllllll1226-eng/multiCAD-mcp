@@ -165,6 +165,12 @@ uncertainty, and destructive intent.
 - Use `radial_dimension` for a native `AcDbRadialDimension`.
 - Keep `text_override` empty so AutoCAD produces `Ø` or `R` once.
 - Background fill is rejected by default.
+- Aligned, linear, diametric and radial creation plans may specify
+  `dimensions.text_height` and `coordinates.text_position`. These text
+  properties are assigned strictly after the new handle is registered for
+  rollback. Omitted values retain the native template defaults; a refused setter
+  fails execution and rolls back the newly owned entity. Invalid text coordinates
+  fail validation before creation. Measured definition points are not changed.
 - Dimension layout uses the separate `layout_only` operation and records measured
   geometry points before and after moving text.
 - Post-verification reads `Measurement`, `TextOverride`, and background-fill state

@@ -76,6 +76,17 @@ trusted unless its full hash and preparation provenance match the values persist
 with the reconstruction plan; an empty or weakened ad hoc manifest cannot authorize
 commit.
 
+Reconstruction audits additionally require explicit exhaustive-label declarations:
+`source_provenance.manifest_label_completeness=true` and manifest
+`complete_annotation=true`. Missing declarations fail closed. Explicit partial,
+incomplete or truncated declarations, unresolved plan/entity uncertainty, and
+`AI_UNCERTAIN` or approximate-reference geometry block whole-source commit even
+when hashes and scoped geometry checks match. The saved audit records the
+specific blockers; commit rechecks the plan and rejects older audits without
+these completeness results. This enforces declarations and source binding; it
+does not authenticate reviewer independence or implement an automatic
+`cad_prepare_reconstruction` producer.
+
 Manual/text-authored CAD plans without reconstruction source provenance retain the
 normal verified-task plus explicit-confirmation workflow. They do not require an
 image/PDF manifest or comparison artifact.
