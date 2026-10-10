@@ -361,6 +361,14 @@ class PlanExecutor:
         # objects, so a refused color write follows the existing rollback path.
         cad_object.Color = 256
         kind = entity.entity_type.lower()
+        if kind in {"diametric_dimension", "radial_dimension"}:
+            cad_object.Layer = entity.layer
+            _set_if_supported(cad_object, "Linetype", entity.linetype)
+            _set_if_supported(cad_object, "TextOverride", "")
+            _set_if_supported(cad_object, "TextFill", False)
+            _set_if_supported(cad_object, "UseBackgroundColor", False)
+        elif entity.linetype and entity.linetype.lower() != "bylayer":
+            cad_object.Linetype = entity.linetype
         if kind in {
             "aligned_dimension",
             "linear_dimension",
@@ -370,18 +378,16 @@ class PlanExecutor:
             if "text_height" in entity.dimensions:
                 cad_object.TextHeight = float(entity.dimensions["text_height"])
             if "text_position" in entity.coordinates:
+                # Native styling can recompute text placement. Apply the explicit
+                # independent-text policy and position last, without changing the
+                # drawing-wide DIMTMOVE or the measured definition points.
+                cad_object.TextMovement = 2
                 cad_object.TextPosition = adapter._to_variant_array(
                     _coord(entity.coordinates["text_position"])
                 )
-        if kind in {"diametric_dimension", "radial_dimension"}:
-            cad_object.Layer = entity.layer
-            _set_if_supported(cad_object, "Linetype", entity.linetype)
-            _set_if_supported(cad_object, "TextOverride", "")
-            _set_if_supported(cad_object, "TextFill", False)
-            _set_if_supported(cad_object, "UseBackgroundColor", False)
-            return
-        if entity.linetype and entity.linetype.lower() != "bylayer":
-            cad_object.Linetype = entity.linetype
+                update = getattr(cad_object, "Update", None)
+                if callable(update):
+                    update()
 
     def _native_dimension(
         self,

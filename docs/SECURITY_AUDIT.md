@@ -1,4 +1,17 @@
-# Historical v0.4.0 audit snapshot
+# Dependency follow-up (2026-10-10)
+
+A fresh audit of the locked environment found `multidict==6.7.1` affected by
+`CVE-2026-104874` / `GHSA-54p9-h82j-f925`. The
+[upstream advisory](https://github.com/aio-libs/multidict/security/advisories/GHSA-54p9-h82j-f925)
+identifies 6.9.1 as the patched version. The runtime dependency floor is now
+`multidict>=6.9.1,<7`, including wheel installations, and the lock updates only
+this package to 6.9.1. The failed audit remains in the acceptance evidence;
+earlier green audit receipts do not establish current vulnerability status.
+
+Full locked-dependency and clean installed-wheel audits must both pass for the
+tested commit. No vulnerability exception or release is authorized by this fix.
+
+## Historical v0.4.0 audit snapshot
 
 The tool/test counts and commands below describe the v0.4.0 audit, not current main. Current release gates are documented in QUALITY_GATES.md and RELEASE.md.
 

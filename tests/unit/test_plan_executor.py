@@ -574,15 +574,50 @@ class PresentationDimension(CreatedEntity):
         self.presentation_writes = []
         self._text_height = 2.5
         self._text_position = (0.0, 0.0, 0.0)
+        self._text_movement = 0
+        self.update_count = 0
+        self.override_resets = 0
         self.TextOverride = ""
         self.TextFill = False
         self.UseBackgroundColor = False
         if object_type == "AcDbAlignedDimension":
             self.ExtLine1Point, self.ExtLine2Point = points
             self.Measurement = math.dist(*points)
+        elif object_type == "AcDbRadialDimension":
+            self.Center, self.ChordPoint = points
+            self.Measurement = math.dist(*points)
         else:
             self.ChordPoint, self.FarChordPoint = points
             self.Measurement = math.dist(*points)
+
+    @property
+    def TextOverride(self):  # noqa: N802 - AutoCAD COM spelling
+        return self._text_override
+
+    @TextOverride.setter
+    def TextOverride(self, value):  # noqa: N802 - AutoCAD COM spelling
+        # Native style/property changes can recompute placement after a setter.
+        self._text_override = value
+        self._text_position = (0.0, 0.0, 0.0)
+        self.override_resets += 1
+
+    @property
+    def TextMovement(self):  # noqa: N802 - AutoCAD COM spelling
+        return self._text_movement
+
+    @TextMovement.setter
+    def TextMovement(self, value):  # noqa: N802 - AutoCAD COM spelling
+        if self.fail_property == "TextMovement":
+            raise RuntimeError("refused dimension TextMovement")
+        self.presentation_writes.append(("TextMovement", value))
+        self._text_movement = value
+
+    def Update(self):  # noqa: N802 - AutoCAD COM spelling
+        """Record supported native recomputation without altering definition points."""
+        if self.fail_property == "Update":
+            raise RuntimeError("refused dimension Update")
+        self.presentation_writes.append(("Update", None))
+        self.update_count += 1
 
     @property
     def TextHeight(self):  # noqa: N802 - AutoCAD COM spelling
@@ -610,11 +645,12 @@ class PresentationDimension(CreatedEntity):
 class PresentationAdapter:
     """Create one inspectable native dimension through each real executor branch."""
 
-    def __init__(self, *, fail_property=""):
-        """Configure one native dimension with an optional refused setter."""
+    def __init__(self, *, fail_property="", update_supported=True):
+        """Configure a native dimension with optional refused setters or Update."""
         self.document = CreationDocument()
         self.document.ModelSpace = self
         self.fail_property = fail_property
+        self.update_supported = update_supported
         self.converted_points = []
 
     def list_layers(self):
@@ -630,6 +666,8 @@ class PresentationAdapter:
 
     def _new_dimension(self, object_type, points):
         entity = PresentationDimension("P1", object_type, points, fail_property=self.fail_property)
+        if not self.update_supported:
+            entity.Update = None
         self.document.objects[entity.Handle] = entity
         return entity
 
@@ -639,18 +677,24 @@ class PresentationAdapter:
     def AddDimDiametric(self, first, second, _leader):  # noqa: N802
         return self._new_dimension("AcDbDiametricDimension", (tuple(first), tuple(second)))
 
+    def AddDimRadial(self, center, chord, _leader):  # noqa: N802
+        return self._new_dimension("AcDbRadialDimension", (tuple(center), tuple(chord)))
+
     @staticmethod
     def refresh_view():
         pass
 
 
 def _dimension_presentation_plan(kind, *, explicit=True):
-    coordinates = (
-        {"start": [0, 0, 0], "end": [20, 0, 0]}
-        if kind == "aligned_dimension"
-        else {"chord_point": [-5, 0, 0], "far_chord_point": [5, 0, 0]}
-    )
-    dimensions = {"measurement": 20} if kind == "aligned_dimension" else {"diameter": 10}
+    coordinates, dimensions = {
+        "aligned_dimension": ({"start": [0, 0, 0], "end": [20, 0, 0]}, {"measurement": 20}),
+        "linear_dimension": ({"start": [0, 0, 0], "end": [20, 0, 0]}, {"measurement": 20}),
+        "diametric_dimension": (
+            {"chord_point": [-5, 0, 0], "far_chord_point": [5, 0, 0]},
+            {"diameter": 10},
+        ),
+        "radial_dimension": ({"center": [0, 0, 0], "chord_point": [5, 0, 0]}, {"radius": 5}),
+    }[kind]
     if explicit:
         coordinates["text_position"] = [25, 15, 0]
         dimensions["text_height"] = 3.25
@@ -673,7 +717,9 @@ def _dimension_presentation_plan(kind, *, explicit=True):
     )
 
 
-@pytest.mark.parametrize("kind", ["aligned_dimension", "diametric_dimension"])
+@pytest.mark.parametrize(
+    "kind", ["aligned_dimension", "linear_dimension", "diametric_dimension", "radial_dimension"]
+)
 def test_created_dimensions_apply_requested_text_style_and_verify_native_state(kind):
     """The requested text properties survive real executor/native verifier paths."""
     from cad_memory.verifier import PostExecutionVerifier
@@ -685,15 +731,35 @@ def test_created_dimensions_apply_requested_text_style_and_verify_native_state(k
     entity = adapter.document.objects["P1"]
     assert entity.TextHeight == 3.25
     assert entity.TextPosition == (25.0, 15.0, 0.0)
-    assert entity.presentation_writes == [("TextHeight", 3.25), ("TextPosition", (25.0, 15.0, 0.0))]
+    assert entity.presentation_writes == [
+        ("TextHeight", 3.25),
+        ("TextMovement", 2),
+        ("TextPosition", (25.0, 15.0, 0.0)),
+        ("Update", None),
+    ]
+    assert entity.TextMovement == 2
+    assert entity.update_count == 1
+    assert entity.override_resets == (
+        2 if kind in {"diametric_dimension", "radial_dimension"} else 1
+    )
     assert adapter.converted_points[-1] == (25.0, 15.0, 0.0)
-    assert entity.Measurement == (20 if kind == "aligned_dimension" else 10)
+    assert (
+        entity.Measurement
+        == {
+            "aligned_dimension": 20,
+            "linear_dimension": 20,
+            "diametric_dimension": 10,
+            "radial_dimension": 5,
+        }[kind]
+    )
     assert entity.TextOverride == ""
     assert PostExecutionVerifier().verify(adapter, plan, result["handles"])["passed"] is True
 
 
-@pytest.mark.parametrize("kind", ["aligned_dimension", "diametric_dimension"])
-@pytest.mark.parametrize("property_name", ["TextHeight", "TextPosition"])
+@pytest.mark.parametrize(
+    "kind", ["aligned_dimension", "linear_dimension", "diametric_dimension", "radial_dimension"]
+)
+@pytest.mark.parametrize("property_name", ["TextHeight", "TextMovement", "TextPosition", "Update"])
 def test_rejected_created_dimension_text_property_rolls_back_owned_handle(kind, property_name):
     """A refused native setter cannot report success or strand the new entity."""
     adapter = PresentationAdapter(fail_property=property_name)
@@ -708,7 +774,9 @@ def test_rejected_created_dimension_text_property_rolls_back_owned_handle(kind, 
     assert adapter.document.objects["P1"].deleted is True
 
 
-@pytest.mark.parametrize("kind", ["aligned_dimension", "diametric_dimension"])
+@pytest.mark.parametrize(
+    "kind", ["aligned_dimension", "linear_dimension", "diametric_dimension", "radial_dimension"]
+)
 def test_dimension_text_defaults_are_not_assigned_without_explicit_plan_values(kind):
     """Omitted presentation fields leave the native template defaults untouched."""
     adapter = PresentationAdapter()
@@ -718,3 +786,18 @@ def test_dimension_text_defaults_are_not_assigned_without_explicit_plan_values(k
     assert entity.TextHeight == 2.5
     assert entity.TextPosition == (0.0, 0.0, 0.0)
     assert entity.presentation_writes == []
+    assert entity.TextMovement == 0
+    assert entity.update_count == 0
+
+
+@pytest.mark.parametrize("kind", ["diametric_dimension", "radial_dimension"])
+def test_explicit_dimension_position_does_not_fabricate_an_unsupported_update(kind):
+    """A lightweight fake without Update remains inspectable without a fake call."""
+    adapter = PresentationAdapter(update_supported=False)
+    result = PlanExecutor().execute(adapter, _dimension_presentation_plan(kind))
+    assert result["success"] is True
+    entity = adapter.document.objects["P1"]
+    assert entity.Update is None
+    assert entity.update_count == 0
+    assert entity.TextMovement == 2
+    assert entity.TextPosition == (25.0, 15.0, 0.0)

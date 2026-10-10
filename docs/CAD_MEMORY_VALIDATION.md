@@ -171,6 +171,10 @@ uncertainty, and destructive intent.
   rollback. Omitted values retain the native template defaults; a refused setter
   fails execution and rolls back the newly owned entity. Invalid text coordinates
   fail validation before creation. Measured definition points are not changed.
+  An explicit position uses the per-entity independent-text mode
+  `TextMovement=2`; movement and position are applied after other styling,
+  followed by `Update` when supported. Omitted positions retain native movement
+  defaults. The drawing-wide `DIMTMOVE` variable is never changed.
 - Dimension layout uses the separate `layout_only` operation and records measured
   geometry points before and after moving text.
 - Post-verification reads `Measurement`, `TextOverride`, and background-fill state
