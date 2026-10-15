@@ -22,8 +22,8 @@ def test_common_english_and_chinese_aliases_are_normalized():
 def test_pipeline_cache_uses_normalized_language(monkeypatch):
     calls = []
 
-    def fake_create(language, device):
-        calls.append((language, device))
+    def fake_create(language, device, det_max_side):
+        calls.append((language, device, det_max_side))
         return object()
 
     clear_pipeline_cache()
@@ -31,7 +31,7 @@ def test_pipeline_cache_uses_normalized_language(monkeypatch):
     first = _get_pipeline("eng", "cpu")
     second = _get_pipeline("en", "cpu")
     assert first is second
-    assert calls == [("en", "cpu")]
+    assert calls == [("en", "cpu", 960)]
     clear_pipeline_cache()
 
 

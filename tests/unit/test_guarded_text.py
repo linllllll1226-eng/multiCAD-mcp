@@ -71,7 +71,7 @@ class _Adapter:
         assert height == 2.5
         assert rotation == 0.0
         assert layer == "AI_PREVIEW_DIM"
-        assert color == "white"
+        assert color == "bylayer"
         assert _skip_refresh is True
         return "T1"
 

@@ -15,6 +15,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Start stdio transports without the upstream update-checking banner so local
+  handshakes do not wait for an optional PyPI version lookup.
+- Clarified numeric-verifier fallbacks, made corpus report strings explicit, and
+  centralized test-entity layer initialization to address merge-review findings.
+- Recover from corrupt or inaccessible vision caches without losing fresh analysis;
+  publish result files atomically and retry transient OCR failures on later requests.
+  Preserve valid existing caches and review flags, and report the current source
+  filename when identical content is reused after a rename.
+- Raised PyJWT and urllib3 security floors to 2.15.0 and 2.8.0 respectively,
+  including wheel metadata, and refreshed their locked versions.
+- Added opt-in orthogonal OCR probes with original-coordinate boxes, agreeing-pass
+  provenance and explicit review flags for conflicting or rotation-only candidates.
+- Added source-bound offline scoring of private prediction snapshots, stricter
+  label/baseline validation and location-aware text/dimension matching. Unconfirmed
+  evidence cannot establish recognition completeness; no live-DWG acceptance is inferred.
+- Fixed page/rotation-aware real-drawing overlays, transformed arc labels and
+  recursion exhaustion in large one-to-one matching problems.
+- Added coverage floors for the OCR orientation and real-corpus evaluation modules.
 - Routed dashboard refresh, export, drawing-switch, and entity queries through one bounded
   STA COM worker, with explicit timeout/disconnect errors and process-wide MCP serialization.
 - Added `cad_render_task_audit` for background-safe SVG/PNG rendering from fresh task-owned

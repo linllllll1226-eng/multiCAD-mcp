@@ -17,9 +17,13 @@ FLOORS = {
     "src/cad_memory/dimension_points.py": 100,
     "src/cad_vision/audit_renderer.py": 79,
     "src/cad_vision/analyzer.py": 90,
+    "src/cad_vision/cache.py": 90,
     "src/cad_vision/dimensions.py": 95,
     "src/cad_vision/pdf.py": 89,
     "src/cad_vision/ocr.py": 89,
+    "src/cad_vision/ocr_rotation.py": 90,
+    "src/cad_vision/benchmark.py": 90,
+    "src/cad_vision/corpus.py": 90,
 }
 
 

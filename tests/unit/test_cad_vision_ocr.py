@@ -69,12 +69,32 @@ def test_runtime_model_cache_avoids_the_windows_profile_by_default(
     model_cache = tmp_path / "ascii-model-cache"
     monkeypatch.delenv("PADDLE_PDX_CACHE_HOME", raising=False)
     monkeypatch.setattr(ocr_module, "DEFAULT_MODEL_CACHE", model_cache)
+    monkeypatch.setattr(ocr_module.sys, "platform", "linux")
 
     configured = ocr_module._configure_runtime_paths()
 
     assert configured == model_cache
     assert model_cache.is_dir()
     assert ocr_module.os.environ["PADDLE_PDX_CACHE_HOME"] == str(model_cache)
+
+
+def test_windows_unicode_model_cache_fails_before_filesystem_or_provider_use(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    model_cache = tmp_path / "中文模型"
+    monkeypatch.setenv("PADDLE_PDX_CACHE_HOME", str(model_cache))
+    monkeypatch.setattr(ocr_module.sys, "platform", "win32")
+    with pytest.raises(ValueError, match="ASCII-only.*cache path"):
+        ocr_module._configure_runtime_paths()
+    assert not model_cache.exists()
+
+
+def test_nonwindows_unicode_model_cache_remains_supported(tmp_path: Path, monkeypatch: Any) -> None:
+    model_cache = tmp_path / "中文模型"
+    monkeypatch.setenv("PADDLE_PDX_CACHE_HOME", str(model_cache))
+    monkeypatch.setattr(ocr_module.sys, "platform", "linux")
+    assert ocr_module._configure_runtime_paths() == model_cache
+    assert model_cache.is_dir()
 
 
 def test_selected_pdf_region_maps_ocr_box_back_to_page_coordinates(tmp_path: Path) -> None:
@@ -228,7 +248,7 @@ def test_failed_retry_discards_rebuilt_pipeline_from_cache(
     first = BrokenPipeline()
     rebuilt = BrokenPipeline()
     ocr_module.clear_pipeline_cache()
-    ocr_module._PIPELINES[("ch", "cpu")] = first
+    ocr_module._PIPELINES[("ch", "cpu", 960)] = first
     monkeypatch.setattr(
         ocr_module,
         "ocr_capabilities",
@@ -237,13 +257,13 @@ def test_failed_retry_discards_rebuilt_pipeline_from_cache(
     monkeypatch.setattr(
         ocr_module,
         "_create_pipeline",
-        lambda language, device: rebuilt,
+        lambda language, device, det_max_side: rebuilt,
     )
 
     try:
         result = extract_ocr(source)
         assert result["status"] == "error"
         assert result["error"] == "native pipeline failed"
-        assert ("ch", "cpu") not in ocr_module._PIPELINES
+        assert ("ch", "cpu", 960) not in ocr_module._PIPELINES
     finally:
         ocr_module.clear_pipeline_cache()

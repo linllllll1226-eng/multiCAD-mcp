@@ -43,7 +43,7 @@ def main() -> None:
             pythoncom.CoUninitialize()
 
     logging.getLogger(__name__).info("Starting enhanced multiCAD-MCP (isolated DWG acceptance)")
-    mcp.run(transport="stdio")
+    mcp.run(transport="stdio", show_banner=False)
 
 
 if __name__ == "__main__":

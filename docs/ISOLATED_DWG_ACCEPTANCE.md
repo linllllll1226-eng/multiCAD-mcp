@@ -58,6 +58,23 @@ failed evidence and use a fresh run for a new acceptance attempt.
 
 COM calls themselves are not forcibly cancellable. The active-document polling
 after `Open` is bounded to ten seconds; this does not bound `Open` itself.
+Read-only document enumeration, native document binding, clean saved-state
+observation and bound snapshot observation each have a ten-second retry deadline,
+with at most 0.1 seconds between attempts. Only `AttributeError` from temporarily
+unavailable COM members and integer COM-busy HRESULTs `-2147418111` and
+`-2147417846` retry; other errors and failed identity/state guards stop immediately.
+Each attempt reacquires the document objects and repeats the complete observation,
+without nested retry windows. A read call itself cannot be forcibly cancelled.
+Preparation performs one `Add`, reacquires `ActiveDocument` and binds its COM
+identity to the opaque `Add` return wrapper (or accepts the same Python object).
+It reads no drawing properties from that generic wrapper. Only the bound native
+document is checked for a nonempty name outside the baseline, empty `FullName`
+and empty model space. An unsaved drawing's `Path` can contain AutoCAD's working
+directory and is not an unsaved-state guard.
+`SaveAs` and `SetVariable` must be callable before the seven variable writes and
+one `SaveAs`. No mutation is retried. Identity mismatch, another COM error or a
+read timeout leaves `preparing` without a successful event; inspect the failed
+run and preserve it instead of resetting it or deleting the new empty drawing.
 The state schema is version 1 and deliberately rejects the older one-off script's
 state files. Keep those historical artifacts intact and use a fresh directory.
 

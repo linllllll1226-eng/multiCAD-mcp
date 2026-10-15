@@ -6,7 +6,6 @@ import json
 from typing import Any
 
 from cad_vision import analyze_source, vision_capabilities
-from cad_vision.window_capture import capture_live_cad_window
 
 
 def _result(payload: Any) -> str:
@@ -35,6 +34,7 @@ def register_vision_tools(mcp: Any) -> None:
         raster_region_threshold: float = 0.02,
         source_unit: str = "",
         drawing_unit: str = "",
+        ocr_rotation_angles: list[int] | None = None,
     ) -> str:
         """Analyze one local PDF/image without reading or writing an AutoCAD DWG."""
         return _result(
@@ -51,6 +51,7 @@ def register_vision_tools(mcp: Any) -> None:
                 raster_region_threshold=raster_region_threshold,
                 source_unit=source_unit or None,
                 drawing_unit=drawing_unit or None,
+                ocr_rotation_angles=ocr_rotation_angles,
             )
         )
 
@@ -61,6 +62,8 @@ def register_vision_tools(mcp: Any) -> None:
         allow_restore: bool = False,
     ) -> str:
         """Capture the real CAD UI by HWND without requiring an AutoCAD COM proxy."""
+        from cad_vision.window_capture import capture_live_cad_window
+
         return _result(
             capture_live_cad_window(
                 cad_type=cad_type,

@@ -142,6 +142,13 @@ allow flags.
 7. Call `cad_verify_execution` with the same plan, handles, and `task_id`.
 8. Report the comparison rows: target, actual, error, and pass/fail.
 
+Verification reports use JSON `null` for categorical comparisons or an unavailable
+finite numeric distance. `passed` remains the explicit decision: a required numeric
+comparison with an invalid, missing, nonfinite or overflowed observation fails. Nonfinite actual
+values are retained as the strings `NaN`, `Infinity` or `-Infinity`, never as
+invented finite coordinates. Reports can be encoded with `allow_nan=False`;
+categorical membership checks do not calculate numeric distances.
+
 Validation uses an entity-specific dimension schema instead of treating every
 field as a positive number. Boolean polyline closure remains a boolean, while
 numeric fields are checked according to their entity semantics. The geometry gate
@@ -158,6 +165,16 @@ uncertainty, and destructive intent.
 - Use `radial_dimension` for a native `AcDbRadialDimension`.
 - Keep `text_override` empty so AutoCAD produces `Ø` or `R` once.
 - Background fill is rejected by default.
+- Aligned, linear, diametric and radial creation plans may specify
+  `dimensions.text_height` and `coordinates.text_position`. These text
+  properties are assigned strictly after the new handle is registered for
+  rollback. Omitted values retain the native template defaults; a refused setter
+  fails execution and rolls back the newly owned entity. Invalid text coordinates
+  fail validation before creation. Measured definition points are not changed.
+  An explicit position uses the per-entity independent-text mode
+  `TextMovement=2`; movement and position are applied after other styling,
+  followed by `Update` when supported. Omitted positions retain native movement
+  defaults. The drawing-wide `DIMTMOVE` variable is never changed.
 - Dimension layout uses the separate `layout_only` operation and records measured
   geometry points before and after moving text.
 - Post-verification reads `Measurement`, `TextOverride`, and background-fill state

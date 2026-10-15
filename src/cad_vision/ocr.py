@@ -5,7 +5,9 @@ from __future__ import annotations
 import importlib.metadata
 import importlib.util
 import json
+import math
 import os
+import sys
 import tempfile
 import threading
 from pathlib import Path
@@ -14,9 +16,17 @@ from typing import Any, Callable
 from cad_runtime import data_directory
 
 from .dimensions import parse_dimension_text
+from .ocr_rotation import (
+    merge_orientation_evidence,
+    normalized_rotations,
+    rotated_inputs,
+    unrotated_box,
+)
 
 _PIPELINE_LOCK = threading.RLock()
-_PIPELINES: dict[tuple[str, str], Any] = {}
+_PIPELINES: dict[tuple[str, str, int], Any] = {}
+DEFAULT_OCR_DET_MAX_SIDE = 960
+MAX_OCR_DET_MAX_SIDE = 1536
 DEFAULT_MODEL_CACHE = data_directory() / "paddle_models"
 _LANGUAGE_ALIASES = {
     "eng": "en",
@@ -25,6 +35,23 @@ _LANGUAGE_ALIASES = {
     "zh-cn": "ch",
     "zh_cn": "ch",
 }
+
+
+def configured_ocr_det_max_side(value: int | None = None) -> int:
+    """Resolve a bounded detector size without accepting bools or noninteger input."""
+    setting: object = (
+        os.environ.get("MULTICAD_OCR_DET_MAX_SIDE", str(DEFAULT_OCR_DET_MAX_SIDE))
+        if value is None
+        else value
+    )
+    if value is None and isinstance(setting, str):
+        setting = setting.strip()
+        if not setting.isascii() or not setting.isdecimal():
+            raise ValueError("OCR detector max side must be an integer from 64 to 1536")
+        setting = int(setting)
+    if type(setting) is not int or not 64 <= setting <= MAX_OCR_DET_MAX_SIDE:
+        raise ValueError("OCR detector max side must be an integer from 64 to 1536")
+    return setting
 
 
 def _normalize_language(language: str) -> str:
@@ -37,9 +64,17 @@ def _normalize_language(language: str) -> str:
 def _configure_runtime_paths() -> Path:
     """Keep Paddle model files on an ASCII-safe, user-overridable local path."""
     configured = Path(
-        os.environ.setdefault("PADDLE_PDX_CACHE_HOME", str(DEFAULT_MODEL_CACHE))
+        os.environ.get("PADDLE_PDX_CACHE_HOME", str(DEFAULT_MODEL_CACHE))
     ).expanduser()
+    if sys.platform == "win32" and not str(configured.resolve()).isascii():
+        raise ValueError(
+            "PaddleOCR Windows inference requires an ASCII-only model cache path. "
+            "Set PADDLE_PDX_CACHE_HOME to an ASCII path, such as "
+            "C:/Temp/multicad-paddle-models; Chinese paths can cause a misleading "
+            "Cannot open file error even when the model exists."
+        )
     configured.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("PADDLE_PDX_CACHE_HOME", str(configured))
     return configured
 
 
@@ -68,7 +103,7 @@ def ocr_capabilities() -> dict[str, Any]:
     }
 
 
-def _create_pipeline(language: str, device: str) -> Any:
+def _create_pipeline(language: str, device: str, det_max_side: int) -> Any:
     _configure_runtime_paths()
     from paddleocr import PaddleOCR
 
@@ -80,15 +115,21 @@ def _create_pipeline(language: str, device: str) -> Any:
         use_doc_orientation_classify=False,
         use_doc_unwarping=False,
         use_textline_orientation=False,
+        text_det_limit_side_len=configured_ocr_det_max_side(det_max_side),
+        text_det_limit_type="max",
     )
 
 
-def _get_pipeline(language: str, device: str) -> Any:
+def _get_pipeline(language: str, device: str, det_max_side: int | None = None) -> Any:
     language = _normalize_language(language)
-    key = (language, device)
+    det_max_side = configured_ocr_det_max_side(det_max_side)
+    key = (language, device, det_max_side)
     with _PIPELINE_LOCK:
         if key not in _PIPELINES:
-            _PIPELINES[key] = _create_pipeline(language, device)
+            for cached in tuple(_PIPELINES):
+                if cached[:2] == key[:2]:
+                    _PIPELINES.pop(cached)
+            _PIPELINES[key] = _create_pipeline(language, device, det_max_side)
         return _PIPELINES[key]
 
 
@@ -98,9 +139,9 @@ def clear_pipeline_cache() -> None:
         _PIPELINES.clear()
 
 
-def _discard_pipeline(language: str, device: str) -> None:
+def _discard_pipeline(language: str, device: str, det_max_side: int) -> None:
     """Discard one possibly-corrupted native OCR pipeline after a runtime error."""
-    key = (_normalize_language(language), device)
+    key = (_normalize_language(language), device, det_max_side)
     with _PIPELINE_LOCK:
         _PIPELINES.pop(key, None)
 
@@ -113,20 +154,22 @@ def _predict_with_retry(
     device: str,
     min_confidence: float,
     pipeline_factory: Callable[[str, str], Any] | None,
+    det_max_side: int | None = None,
 ) -> tuple[Any, bool]:
     """Run PaddleOCR once, rebuilding its native pipeline for one safe retry."""
+    det_max_side = configured_ocr_det_max_side(det_max_side)
     try:
         return pipeline.predict(str(source), text_rec_score_thresh=min_confidence), False
     except Exception:
         if pipeline_factory is not None:
             raise
-        _discard_pipeline(language, device)
-        fresh_pipeline = _get_pipeline(language, device)
+        _discard_pipeline(language, device, det_max_side)
+        fresh_pipeline = _get_pipeline(language, device, det_max_side)
         try:
             result = fresh_pipeline.predict(str(source), text_rec_score_thresh=min_confidence)
         except Exception:
             # A failed rebuild is not safe to reuse on the next request.
-            _discard_pipeline(language, device)
+            _discard_pipeline(language, device, det_max_side)
             raise
         return result, True
 
@@ -148,19 +191,27 @@ def _box(value: Any) -> list[float] | None:
         value = value.tolist()
     if not isinstance(value, (list, tuple)) or not value:
         return None
-    if len(value) == 4 and all(isinstance(item, (int, float)) for item in value):
+    if len(value) == 4 and all(type(item) in (int, float) for item in value):
+        if (
+            not all(math.isfinite(item) for item in value)
+            or value[2] <= value[0]
+            or value[3] <= value[1]
+        ):
+            return None
         return [round(float(item), 2) for item in value]
     points = [
         item
         for item in value
         if isinstance(item, (list, tuple))
         and len(item) >= 2
-        and all(isinstance(number, (int, float)) for number in item[:2])
+        and all(type(number) in (int, float) and math.isfinite(number) for number in item[:2])
     ]
-    if not points:
+    if not points or len(points) != len(value):
         return None
     xs = [float(point[0]) for point in points]
     ys = [float(point[1]) for point in points]
+    if min(xs) == max(xs) or min(ys) == max(ys):
+        return None
     return [round(min(xs), 2), round(min(ys), 2), round(max(xs), 2), round(max(ys), 2)]
 
 
@@ -282,12 +333,16 @@ def extract_ocr(
     default_unit: str | None = None,
     unit_source: str | None = None,
     pdf_render_scale: float = 2.0,
+    rotation_angles: list[int] | None = None,
+    det_max_side: int | None = None,
 ) -> dict[str, Any]:
     """Run local OCR and return text boxes plus parsed dimension candidates."""
     min_confidence = float(min_confidence)
     if not 0.0 <= min_confidence <= 1.0:
         raise ValueError("min_confidence must be between 0 and 1")
     language = _normalize_language(language)
+    rotations = normalized_rotations(rotation_angles)
+    det_max_side = configured_ocr_det_max_side(det_max_side)
 
     capabilities = ocr_capabilities()
     if pipeline_factory is None and not capabilities["available"]:
@@ -305,10 +360,17 @@ def extract_ocr(
         pipeline = (
             pipeline_factory(language, device)
             if pipeline_factory is not None
-            else _get_pipeline(language, device)
+            else _get_pipeline(language, device, det_max_side)
         )
         page_numbers = sorted(set(page_numbers or [])) if page_numbers is not None else None
         regions = regions or {}
+        if source.suffix.lower() == ".pdf" and rotations and page_numbers is None and not regions:
+            import fitz
+
+            with fitz.open(source) as document:
+                page_numbers = list(
+                    range(1, min(len(document), max(1, min(int(max_pages), 50))) + 1)
+                )
         pdf_selection = source.suffix.lower() == ".pdf" and (
             page_numbers is not None or bool(regions)
         )
@@ -319,8 +381,8 @@ def extract_ocr(
         pipeline_rebuilt = False
         try:
             if pdf_selection:
-                if pdf_render_scale <= 0:
-                    raise ValueError("pdf_render_scale must be positive")
+                if not math.isfinite(pdf_render_scale) or pdf_render_scale <= 0:
+                    raise ValueError("pdf_render_scale must be positive and finite")
                 temporary_directory = tempfile.TemporaryDirectory(prefix="multicad-ocr-")
                 inputs = _pdf_ocr_inputs(
                     source,
@@ -342,6 +404,11 @@ def extract_ocr(
                     }
                 ]
 
+            if rotations:
+                if temporary_directory is None:
+                    temporary_directory = tempfile.TemporaryDirectory(prefix="multicad-ocr-")
+                inputs = rotated_inputs(inputs, rotations, Path(temporary_directory.name))
+
             for input_spec in inputs:
                 raw_results, rebuilt = _predict_with_retry(
                     pipeline,
@@ -350,10 +417,11 @@ def extract_ocr(
                     device=device,
                     min_confidence=min_confidence,
                     pipeline_factory=pipeline_factory,
+                    det_max_side=det_max_side,
                 )
                 pipeline_rebuilt = pipeline_rebuilt or rebuilt
                 if rebuilt and pipeline_factory is None:
-                    pipeline = _get_pipeline(language, device)
+                    pipeline = _get_pipeline(language, device, det_max_side)
                 for fallback_page, raw_result in enumerate(raw_results):
                     if fallback_page >= max(1, min(int(max_pages), 50)):
                         break
@@ -367,10 +435,15 @@ def extract_ocr(
                     page_items = pages_by_number.setdefault(page_number, [])
                     for index, text in enumerate(rec_texts):
                         confidence = float(rec_scores[index]) if index < len(rec_scores) else 0.0
+                        if not math.isfinite(confidence) or not 0 <= confidence <= 1:
+                            raise ValueError("OCR confidence must be finite and between 0 and 1")
                         if confidence < min_confidence or not str(text).strip():
                             continue
                         bbox = _mapped_box(
-                            rec_boxes[index] if index < len(rec_boxes) else None,
+                            unrotated_box(
+                                _box(rec_boxes[index] if index < len(rec_boxes) else None),
+                                input_spec,
+                            ),
                             scale=float(input_spec["scale"]),
                             offset_x=float(input_spec["offset_x"]),
                             offset_y=float(input_spec["offset_y"]),
@@ -382,39 +455,52 @@ def extract_ocr(
                             "bbox": bbox,
                             "page": page_number,
                             "provider": "paddleocr",
+                            "rotation_degrees": input_spec.get("rotation_degrees", 0),
                         }
+                        if bbox is None:
+                            item["needs_confirmation"] = True
+                            item["confirmation_reasons"] = ["missing_text_location"]
                         page_items.append(item)
                         texts.append(item)
-                        for parsed in parse_dimension_text(
-                            item["text"],
-                            default_unit=default_unit,
-                            unit_source=unit_source,
-                        ):
-                            parse_confidence = float(parsed.get("confidence", 1.0))
-                            combined_confidence = round(parse_confidence * item["confidence"], 4)
-                            parsed.update(
-                                {
-                                    "page": page_number,
-                                    "source_text": item["text"],
-                                    "confidence": combined_confidence,
-                                    "ocr_confidence": item["confidence"],
-                                    "parse_confidence": parse_confidence,
-                                    "bbox": bbox,
-                                    "provenance": [
-                                        {
-                                            "provider": "paddleocr",
-                                            "source": "ocr",
-                                            "page": page_number,
-                                            "bbox": bbox,
-                                            "confidence": item["confidence"],
-                                        }
-                                    ],
-                                }
-                            )
-                            dimensions.append(parsed)
         finally:
             if temporary_directory is not None:
                 temporary_directory.cleanup()
+
+        if rotations:
+            texts = merge_orientation_evidence(texts)
+            pages_by_number = {number: [] for number in pages_by_number}
+            for item in texts:
+                pages_by_number[item["page"]].append(item)
+        for item in texts:
+            for parsed in parse_dimension_text(
+                item["text"], default_unit=default_unit, unit_source=unit_source
+            ):
+                parse_confidence = float(parsed.get("confidence", 1.0))
+                parsed.update(
+                    {
+                        "page": item["page"],
+                        "source_text": item["text"],
+                        "confidence": round(parse_confidence * item["confidence"], 4),
+                        "ocr_confidence": item["confidence"],
+                        "parse_confidence": parse_confidence,
+                        "bbox": item["bbox"],
+                        "provenance": [
+                            {
+                                "provider": "paddleocr",
+                                "source": "ocr",
+                                "page": item["page"],
+                                "bbox": item["bbox"],
+                                "confidence": item["confidence"],
+                                "orientation_degrees": item.get("orientation_degrees", [0]),
+                            }
+                        ],
+                    }
+                )
+                if item.get("needs_confirmation"):
+                    parsed["needs_confirmation"] = True
+                    parsed["confirmation_reasons"] = item["confirmation_reasons"]
+                    parsed["orientation_conflicts"] = item.get("orientation_conflicts", [])
+                dimensions.append(parsed)
 
         pages = [
             {
@@ -434,12 +520,18 @@ def extract_ocr(
             "pipeline_rebuilt_after_error": pipeline_rebuilt,
             "text_count": len(texts),
             "dimension_count": len(dimensions),
+            "text_samples_truncated": len(texts) > sample_limit,
+            "dimensions_truncated": len(dimensions) > 200,
+            "orientation_review_required": any(item.get("needs_confirmation") for item in texts),
             "dimensions": dimensions[:200],
             "pages": pages,
             "selection": {
                 "page_numbers": page_numbers,
                 "regions": regions,
                 "pdf_render_scale": pdf_render_scale if pdf_selection else None,
+                "rotation_angles": rotations,
+                "text_det_limit_side_len": det_max_side,
+                "text_det_limit_type": "max",
             },
         }
         if include_samples:

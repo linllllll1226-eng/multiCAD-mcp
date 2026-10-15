@@ -1,12 +1,12 @@
 # Documentation Index
 
-## v0.4 at a glance
+## v0.5 at a glance
 
 - 25 MCP tools: 7 upstream unified tools plus 18 enhanced workflow tools.
 - Background-safe task rendering and independent HWND capture for source/CAD visual audits.
 - Local PaddleOCR for scanned images and image-only PDFs, with engineering dimension parsing.
 - Full-repository Ruff and formatting gates plus a release-hygiene check.
-- Python 3.10+, FastMCP 3.1+, Windows COM.
+- Python 3.10+, FastMCP 4 / MCP SDK 2, Windows COM.
 - AutoCAD 2022 is the verified target for guarded execution, task tracking, and native dimension checks.
 
 ## Core documentation
@@ -31,6 +31,8 @@
 | [CAD_VISION_PIPELINE.md](CAD_VISION_PIPELINE.md) | Optional PDF/image preprocessing and evidence extraction |
 | [CAD_OCR.md](CAD_OCR.md) | Local scanned-drawing OCR installation, behavior, benchmark, and troubleshooting |
 | [CAD_VISION_BENCHMARK.md](CAD_VISION_BENCHMARK.md) | Deterministic accuracy and efficiency benchmark methodology |
+| [REAL_DRAWING_BENCHMARK.md](REAL_DRAWING_BENCHMARK.md) | Partial real-drawing pilot and regression floors |
+| [PRIVATE_DRAWING_EVALUATION.md](PRIVATE_DRAWING_EVALUATION.md) | Local source-bound predictions, label review and remaining live acceptance |
 
 For enhanced writes, always use:
 

@@ -4,6 +4,7 @@
   "cases": [
     {
       "id": "hole",
+      "augmentations": ["skew_blur", "hybrid_title"],
       "file": "hole.png",
       "source_sha256": "fc3f6a8b0c9235b331d9e9306a3ed811f01f25ab51cea85731a41591e46e60ab",
       "coordinate_space": "source_pixels",

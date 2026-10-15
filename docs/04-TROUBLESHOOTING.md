@@ -12,6 +12,16 @@
 
 ## Connection Issues
 
+### MCP handshake times out before any CAD operation
+
+The normal, enhanced and isolated-acceptance stdio entry points disable the
+upstream FastMCP startup banner. That banner can check PyPI for updates before
+the stdio transport begins, delaying a local handshake on restricted networks.
+Application startup/error logging remains on stderr; no MCP tools or CAD calls
+are changed. Custom launchers can also pass `show_banner=False` to `run`, or set
+`FASTMCP_CHECK_FOR_UPDATES=off` when retaining their own banner. This does not
+install optional dependencies or supply OCR model weights for a first run.
+
 ### Server startup fails while opening its log file
 
 File logs default to `logs/multicad_mcp.log` inside the project. For a read-only

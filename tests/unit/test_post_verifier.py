@@ -1,9 +1,43 @@
 """Unit tests for actual-object verification without AutoCAD."""
 
+import json
 import math
+from fractions import Fraction
+
+import pytest
 
 from cad_memory.models import DrawingPlan
 from cad_memory.verifier import PostExecutionVerifier, read_entity_state
+
+
+def strict_report(result):
+    """Use the standard strict encoder as an independent output contract check."""
+    encoded = json.dumps(result, allow_nan=False)
+    assert json.loads(encoded) == result
+    assert all(row["error"] is None or math.isfinite(row["error"]) for row in result["rows"])
+
+
+def entity_plan(kind, coordinates, dimensions, layer="AI_PREVIEW_OUTLINE"):
+    """Build a valid plan whose actual COM observations can be varied separately."""
+    return DrawingPlan.model_validate(
+        {
+            "task_name": "strict-json",
+            "unit": "mm",
+            "user_confirmed": True,
+            "existing_layers": [layer],
+            "entities": [
+                {
+                    "entity_type": kind,
+                    "coordinates": coordinates,
+                    "dimensions": dimensions,
+                    "layer": layer,
+                    "linetype": "ByLayer",
+                    "dimension_source": "explicit_dimension",
+                    "confidence": 1,
+                }
+            ],
+        }
+    )
 
 
 class FakeCircle:
@@ -513,3 +547,159 @@ def test_centerline_verification_checks_effective_layer_linetype():
         FakeAdapter({"L1": FakeLine()}, "CENTER2"), plan, ["L1"]
     )
     assert passed["passed"], passed
+
+
+@pytest.mark.parametrize(
+    ("kind", "observed", "expected_pass"),
+    [
+        ("polyline", "AcDbPolyline", True),
+        ("polyline", "AcDb2dPolyline", True),
+        ("polyline", "AcDbSpline", False),
+        ("center", "CENTER", True),
+        ("center", "CENTER2", True),
+        ("center", "CENTERX2", True),
+        ("center", "Continuous", False),
+        ("hidden", "HIDDEN", True),
+        ("hidden", "HIDDEN2", True),
+        ("hidden", "HIDDENX2", True),
+        ("hidden", "Continuous", False),
+        ("linear_dimension", "AcDbRotatedDimension", True),
+        ("linear_dimension", "AcDbAlignedDimension", True),
+        ("linear_dimension", "AcDbCircle", False),
+    ],
+)
+def test_categorical_membership_has_nullable_error_and_strict_json(kind, observed, expected_pass):
+    actual: FakePolyline | FakeAlignedDimension | FakeLine
+    if kind == "polyline":
+        coordinates = (
+            (0, 0, 0, 10, 0, 0, 10, 5, 0) if observed == "AcDb2dPolyline" else (0, 0, 10, 0, 10, 5)
+        )
+        actual = FakePolyline(coordinates)
+        actual.ObjectName = observed
+        plan = entity_plan("polyline", {"points": [[0, 0], [10, 0], [10, 5]]}, {"closed": False})
+        property_name = "object_type"
+        linetype = "Continuous"
+    elif kind == "linear_dimension":
+        actual = FakeAlignedDimension()
+        actual.ObjectName = observed
+        plan = entity_plan(
+            "linear_dimension",
+            {"start": [0, 0], "end": [60, 0]},
+            {"measurement": 60, "offset": 10},
+            "AI_PREVIEW_DIM",
+        )
+        property_name = "object_type"
+        linetype = "Continuous"
+    else:
+        actual = FakeLine()
+        layer = "AI_PREVIEW_CENTER" if kind == "center" else "AI_PREVIEW_HIDDEN"
+        actual.Layer = layer
+        plan = entity_plan("line", {"start": [0, 0, 0], "end": [100, 0, 0]}, {}, layer)
+        property_name = "effective_linetype"
+        linetype = observed
+    result = PostExecutionVerifier().verify(
+        FakeAdapter({actual.Handle: actual}, linetype), plan, [actual.Handle]
+    )
+    row = next(item for item in result["rows"] if item["property"] == property_name)
+    assert row["actual"] == observed
+    assert row["passed"] is result["passed"] is expected_pass
+    assert row["error"] is None
+    strict_report(result)
+
+
+@pytest.mark.parametrize(
+    ("value", "marker"), [(math.nan, "NaN"), (math.inf, "Infinity"), (-math.inf, "-Infinity")]
+)
+@pytest.mark.parametrize("axis", [0, 1, 2])
+@pytest.mark.parametrize(
+    ("attribute", "property_name"), [("StartPoint", "start"), ("EndPoint", "end")]
+)
+def test_every_nonfinite_xyz_position_fails_without_inventing_coordinates(
+    value, marker, axis, attribute, property_name
+):
+    actual = FakeLine()
+    point = list(getattr(actual, attribute))
+    point[axis] = value
+    setattr(actual, attribute, tuple(point))
+    plan = entity_plan("line", {"start": [0, 0, 0], "end": [100, 0, 0]}, {}, "AI_PREVIEW_CENTER")
+    result = PostExecutionVerifier().verify(FakeAdapter({"L1": actual}, "CENTER2"), plan, ["L1"])
+    row = next(item for item in result["rows"] if item["property"] == property_name)
+    assert result["passed"] is row["passed"] is False
+    assert row["actual"][axis] == marker
+    assert row["error"] is None
+    assert result["errors"]
+    strict_report(result)
+
+
+@pytest.mark.parametrize(
+    ("value", "marker"), [(math.nan, "NaN"), (math.inf, "Infinity"), (-math.inf, "-Infinity")]
+)
+@pytest.mark.parametrize("position", range(6))
+def test_every_nonfinite_polyline_coordinate_fails_even_after_finite_vertices(
+    value, marker, position
+):
+    coordinates = [0.0, 0.0, 10.0, 0.0, 10.0, 5.0]
+    coordinates[position] = value
+    actual = FakePolyline(tuple(coordinates))
+    plan = entity_plan("polyline", {"points": [[0, 0], [10, 0], [10, 5]]}, {"closed": False})
+    result = PostExecutionVerifier().verify(FakeAdapter({"P1": actual}), plan, ["P1"])
+    row = next(item for item in result["rows"] if item["property"] == "vertices")
+    assert result["passed"] is row["passed"] is False
+    assert result["actual_entities"][0]["coordinates"][position] == marker
+    assert row["actual"] is row["error"] is None
+    strict_report(result)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [None, "not-a-number", True, math.nan, math.inf, -math.inf, 10**400, Fraction(10**400), 1e308],
+)
+def test_invalid_missing_nonfinite_and_overflowing_radius_fail_with_strict_report(value):
+    actual = FakeCircle()
+    actual.Radius = value
+    plan = entity_plan("circle", {"center": [500, 300, 0]}, {"radius": 50})
+    result = PostExecutionVerifier().verify(FakeAdapter({"A1": actual}), plan, ["A1"])
+    row = next(item for item in result["rows"] if item["property"] == "radius")
+    assert result["passed"] is row["passed"] is False
+    if value == 1e308:
+        assert result["actual_entities"][0]["diameter"] == "Infinity"
+        assert row["error"] == 1e308
+    strict_report(result)
+
+
+@pytest.mark.parametrize("attribute", ["StartAngle", "EndAngle"])
+@pytest.mark.parametrize(
+    "value", [None, "not-an-angle", math.nan, math.inf, -math.inf, 10**400, 1e308]
+)
+def test_invalid_or_nonfinite_native_angles_never_pass_normalization(attribute, value):
+    actual = FakeArc(0, 90)
+    setattr(actual, attribute, value)
+    plan = entity_plan("arc", {"center": [0, 0]}, {"radius": 5, "start_angle": 0, "end_angle": 90})
+    result = PostExecutionVerifier().verify(FakeAdapter({"A2": actual}), plan, ["A2"])
+    property_name = "start_angle" if attribute == "StartAngle" else "end_angle"
+    row = next(item for item in result["rows"] if item["property"] == property_name)
+    assert result["passed"] is row["passed"] is False
+    assert row["error"] is None
+    strict_report(result)
+
+
+def test_finite_extreme_vertices_report_overflowed_bounds_as_markers_and_fail():
+    actual = FakePolyline((-1e308, -1e308, 1e308, -1e308, 1e308, 1e308))
+    plan = entity_plan("polyline", {"points": [[0, 0], [10, 0], [10, 5]]}, {"closed": False})
+    result = PostExecutionVerifier().verify(FakeAdapter({"P1": actual}), plan, ["P1"])
+    assert result["passed"] is False
+    assert result["actual_entities"][0]["width"] == "Infinity"
+    assert result["actual_entities"][0]["height"] == "Infinity"
+    strict_report(result)
+
+
+def test_finite_numeric_subtraction_overflow_stays_failed_with_nullable_distance():
+    actual = FakeCircle()
+    actual.Radius = -1e308
+    plan = entity_plan("circle", {"center": [500, 300, 0]}, {"radius": 1e308})
+    result = PostExecutionVerifier().verify(FakeAdapter({"A1": actual}), plan, ["A1"])
+    row = next(item for item in result["rows"] if item["property"] == "radius")
+    assert result["passed"] is row["passed"] is False
+    assert row["error"] is None
+    assert row["actual"] == -1e308 and row["target"] == 1e308
+    strict_report(result)

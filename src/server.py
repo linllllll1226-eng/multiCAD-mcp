@@ -136,7 +136,7 @@ if __name__ == "__main__":
             web_thread.start()
 
             # Run MCP stdio
-            mcp.run(transport="stdio")
+            mcp.run(transport="stdio", show_banner=False)
         else:
             logger.info("Starting multiCAD-MCP server in HTTP mode...")
 

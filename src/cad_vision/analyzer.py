@@ -15,12 +15,15 @@ from typing import Any
 
 from cad_runtime import data_directory
 
+from .cache import load_result, save_result
 from .dimensions import normalize_length_unit
 from .image import analyze_image_geometry
-from .ocr import extract_ocr, ocr_capabilities
+from .ocr import configured_ocr_det_max_side, extract_ocr, ocr_capabilities
+from .ocr_rotation import normalized_rotations
 from .pdf import extract_vector_pdf
+from .pdf_raster import add_raster_geometry
 
-PIPELINE_VERSION = "1.5.0"
+PIPELINE_VERSION = "1.10.0"
 SUPPORTED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 OCR_POLICIES = {"off", "auto", "force"}
 OCR_RUNTIME_PROFILE = {
@@ -33,10 +36,13 @@ DEFAULT_CACHE_DIR = data_directory() / "vision_cache"
 
 _SAMPLE_KEYS = {
     "line_samples",
+    "diagonal_line_samples",
     "circle_samples",
+    "circle_support_samples",
     "close_parallel_pairs",
     "vector_samples",
     "geometry_samples",
+    "raster_geometry_samples",
     "text_samples",
     "image_samples",
 }
@@ -129,12 +135,16 @@ def _safe_distribution_version(distribution: str) -> str | None:
         return None
 
 
-def _runtime_fingerprint(*, suffix: str, ocr_policy: str) -> dict[str, Any]:
+def _runtime_fingerprint(
+    *, suffix: str, ocr_policy: str, ocr_det_max_side: int | None = None
+) -> dict[str, Any]:
     """Describe result-affecting local providers for deterministic cache isolation."""
     if suffix == ".pdf":
         source_provider: dict[str, Any] = {
             "provider": "pymupdf",
             "version": _safe_distribution_version("PyMuPDF"),
+            "opencv_version": _safe_distribution_version("opencv-python-headless"),
+            "numpy_version": _safe_distribution_version("numpy"),
         }
     else:
         source_provider = {
@@ -147,6 +157,8 @@ def _runtime_fingerprint(*, suffix: str, ocr_policy: str) -> dict[str, Any]:
     if ocr_policy != "off":
         fingerprint["ocr"] = {
             **OCR_RUNTIME_PROFILE,
+            "text_det_limit_side_len": configured_ocr_det_max_side(ocr_det_max_side),
+            "text_det_limit_type": "max",
             "provider_version": _safe_distribution_version("paddleocr"),
             "runtime": "paddlepaddle",
             "runtime_version": _safe_distribution_version("paddlepaddle"),
@@ -319,6 +331,11 @@ def _merge_dimension_evidence(
             float(existing.get("confidence", 0.0)),
             float(candidate.get("confidence", 0.0)),
         )
+        if candidate.get("needs_confirmation"):
+            existing["needs_confirmation"] = True
+        for key in ("confirmation_reasons", "orientation_conflicts"):
+            if key in candidate:
+                existing[key] = sorted(set(existing.get(key, [])) | set(candidate[key]))
     return merged[:200]
 
 
@@ -335,12 +352,18 @@ def analyze_source(
     raster_region_threshold: float = 0.02,
     source_unit: str | None = None,
     drawing_unit: str | None = None,
+    ocr_rotation_angles: list[int] | None = None,
+    ocr_det_max_side: int | None = None,
 ) -> dict[str, Any]:
     """Analyze a local CAD source and return a compact structured result."""
     started = time.perf_counter()
     source = _validated_source(source_path)
     max_pages = max(1, min(int(max_pages), 50))
     policy = _normalized_ocr_policy(use_ocr=use_ocr, ocr_policy=ocr_policy)
+    rotations = normalized_rotations(ocr_rotation_angles)
+    resolved_det_max_side = (
+        configured_ocr_det_max_side(ocr_det_max_side) if policy != "off" else None
+    )
     raster_page_threshold = float(raster_page_threshold)
     raster_region_threshold = float(raster_region_threshold)
     if not 0.0 <= raster_page_threshold <= 1.0:
@@ -349,12 +372,21 @@ def analyze_source(
         raise ValueError("raster_region_threshold must be between 0 and 1")
     unit_resolution = _unit_resolution(source_unit, drawing_unit)
     digest = _digest(source)
-    runtime_fingerprint = _runtime_fingerprint(suffix=source.suffix.lower(), ocr_policy=policy)
+    source_info = {
+        "name": source.name,
+        "suffix": source.suffix.lower(),
+        "size_bytes": source.stat().st_size,
+        "sha256": digest,
+    }
+    runtime_fingerprint = _runtime_fingerprint(
+        suffix=source.suffix.lower(), ocr_policy=policy, ocr_det_max_side=resolved_det_max_side
+    )
     options = {
         "pipeline_version": PIPELINE_VERSION,
         "max_pages": max_pages,
         "sample_policy": "canonical_bounded",
         "ocr_policy": policy,
+        "ocr_rotation_angles": rotations,
         "ocr_language": ocr_language,
         "ocr_min_confidence": float(ocr_min_confidence),
         "raster_page_threshold": raster_page_threshold,
@@ -371,8 +403,8 @@ def analyze_source(
     cache_dir = Path(os.environ.get("MULTICAD_VISION_CACHE", str(DEFAULT_CACHE_DIR)))
     cache_path = cache_dir / f"{cache_key}.json"
 
-    if use_cache and cache_path.is_file():
-        cached = json.loads(cache_path.read_text(encoding="utf-8"))
+    cached = load_result(cache_path, source=source_info, options=options) if use_cache else None
+    if cached is not None:
         view = _result_view(cached, include_samples=include_samples)
         view["cache_hit"] = True
         view["request_ms"] = round((time.perf_counter() - started) * 1000.0, 3)
@@ -388,6 +420,7 @@ def analyze_source(
             default_unit=unit_resolution["unit"],
             unit_source=unit_resolution["unit_source"],
         )
+        add_raster_geometry(source, analysis, raster_region_threshold)
     else:
         analysis = analyze_image_geometry(source, include_samples=True)
 
@@ -430,6 +463,8 @@ def analyze_source(
             regions=regions if is_pdf else None,
             default_unit=unit_resolution["unit"],
             unit_source=unit_resolution["unit_source"],
+            rotation_angles=rotations,
+            det_max_side=resolved_det_max_side,
         )
     elif policy == "off":
         analysis["ocr"] = {
@@ -467,12 +502,7 @@ def analyze_source(
     }
 
     result: dict[str, Any] = {
-        "source": {
-            "name": source.name,
-            "suffix": source.suffix.lower(),
-            "size_bytes": source.stat().st_size,
-            "sha256": digest,
-        },
+        "source": source_info,
         "pipeline_version": PIPELINE_VERSION,
         "runtime_fingerprint": runtime_fingerprint,
         "cache_hit": False,
@@ -480,6 +510,5 @@ def analyze_source(
         "request_ms": round((time.perf_counter() - started) * 1000.0, 3),
     }
     if use_cache:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        cache_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        save_result(cache_path, result)
     return _result_view(result, include_samples=include_samples)

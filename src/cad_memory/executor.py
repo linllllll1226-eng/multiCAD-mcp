@@ -108,7 +108,7 @@ class PlanExecutor:
                         # immediately after the underlying CAD Add* call.
                         register_created(handle)
                     cad_object = document.HandleToObject(handle)
-                    self._finalize_entity(entity, cad_object)
+                    self._finalize_entity(adapter, entity, cad_object)
                     if task_id and owned:
                         if execution_result_id is None:
                             raise ValueError("execution_result_id is required for task provenance")
@@ -263,7 +263,7 @@ class PlanExecutor:
         kind = entity.entity_type.lower()
         c = entity.coordinates
         d = entity.dimensions
-        common = (entity.layer, "white", 25)
+        common = (entity.layer, "bylayer", 25)
         creation_kwargs = (
             {"_on_created": on_created}
             if on_created is not None
@@ -286,7 +286,7 @@ class PlanExecutor:
                 float(d["height"]),
                 float(d.get("rotation", 0.0)),
                 entity.layer,
-                "white",
+                "bylayer",
                 _skip_refresh=True,
                 **creation_kwargs,
             )
@@ -330,7 +330,7 @@ class PlanExecutor:
                 _coord(c["end"]),
                 None,
                 entity.layer,
-                "white",
+                "bylayer",
                 float(d.get("offset", 10.0)),
                 _skip_refresh=True,
                 **creation_kwargs,
@@ -352,10 +352,14 @@ class PlanExecutor:
         raise ValueError(f"Unsupported execution entity type: {kind}")
 
     @staticmethod
-    def _finalize_entity(entity: EntityPlan, cad_object: Any) -> None:
+    def _finalize_entity(adapter: Any, entity: EntityPlan, cad_object: Any) -> None:
         """Apply post-create properties after the handle is owned for rollback."""
         if entity.operation != "create":
             return
+        # Layer colors distinguish preview roles and unresolved geometry. Set
+        # this strictly after ownership registration, including native AddDim*
+        # objects, so a refused color write follows the existing rollback path.
+        cad_object.Color = 256
         kind = entity.entity_type.lower()
         if kind in {"diametric_dimension", "radial_dimension"}:
             cad_object.Layer = entity.layer
@@ -363,9 +367,27 @@ class PlanExecutor:
             _set_if_supported(cad_object, "TextOverride", "")
             _set_if_supported(cad_object, "TextFill", False)
             _set_if_supported(cad_object, "UseBackgroundColor", False)
-            return
-        if entity.linetype and entity.linetype.lower() != "bylayer":
+        elif entity.linetype and entity.linetype.lower() != "bylayer":
             cad_object.Linetype = entity.linetype
+        if kind in {
+            "aligned_dimension",
+            "linear_dimension",
+            "diametric_dimension",
+            "radial_dimension",
+        }:
+            if "text_height" in entity.dimensions:
+                cad_object.TextHeight = float(entity.dimensions["text_height"])
+            if "text_position" in entity.coordinates:
+                # Native styling can recompute text placement. Apply the explicit
+                # independent-text policy and position last, without changing the
+                # drawing-wide DIMTMOVE or the measured definition points.
+                cad_object.TextMovement = 2
+                cad_object.TextPosition = adapter._to_variant_array(
+                    _coord(entity.coordinates["text_position"])
+                )
+                update = getattr(cad_object, "Update", None)
+                if callable(update):
+                    update()
 
     def _native_dimension(
         self,

@@ -42,11 +42,94 @@ another local directory.
   reported and length records remain unresolved.
 - `max_pages`: bounded to at most 50 pages.
 - `use_cache`: caches identical source/options combinations locally.
+- `ocr_rotation_angles`: optional additional counterclockwise passes from
+  `[90, 180, 270]`; defaults to no extra passes. `[90, 270]` can expose vertical
+  text candidates. These cost extra inference and require real-corpus evaluation
+  before being enabled by default. Invalid angles are rejected.
+
+Rotation probes apply to raster sources and selected PDF pages/regions. Their
+boxes are mapped back through the right-angle, crop, scale and page transforms.
+Equal text at the same source location is merged across passes with
+`orientation_observations` retained. Equal values at different locations or
+pages remain separate. Conflicting readings (for example `2` and `12`) are both
+kept with `needs_confirmation=true`; a rotation-only reading also needs review,
+even if two rotated passes agree. A missing/invalid text box requires review.
+These flags propagate to typed dimensions and survive a vector/OCR merge.
+The recognition-completeness scorer refuses unconfirmed predictions.
+
+Original image files and PDF files are never changed. Rotated temporary PNGs
+are removed after success or failure. Multi-frame raster input is rejected for
+rotation probes rather than silently selecting its first frame. The vision
+cache version is 1.10.0 and normalized rotation settings are part of the cache key.
+OCR output includes explicit text/dimension truncation flags; candidates remain
+bounded evidence rather than an exhaustive reconstruction.
+
+To compare the pilot with and without probes, use new directories:
+
+```powershell
+uv run python scripts/benchmark_real_drawings.py --output ../ocr-base --check-baseline tests/fixtures/real_drawings/baseline.json
+uv run python scripts/benchmark_real_drawings.py --output ../ocr-rotated --ocr-rotations 90 270 --check-baseline tests/fixtures/real_drawings/baseline.json
+```
+
+Compare raw text, location, typed-dimension matches, disagreements and latency.
+A higher candidate recall alone is not evidence that the selected dimensions
+are correct. This option's coordinate and conflict behavior is covered by pixel
+fixtures with simulated text; that is not a native-model accuracy measurement.
 
 Compact and detailed-sample requests share one canonical cache entry. The OCR
 pipeline also discards and rebuilds one corrupted native inference object after a
 runtime error, then retries exactly once. User-injected/test providers are never
 retried silently.
+
+## Recoverable result caching
+
+Successful analyses, including candidates still requiring human confirmation,
+can be reused. A transient OCR `error` or `unavailable` result is returned to the
+caller but is not persisted as a reusable result. The next request retries OCR;
+old cached failures are ignored too. A cache hit does not resolve review flags
+or prove source completeness.
+
+Malformed JSON, duplicate keys, nonfinite values, mismatched source/runtime
+metadata and inconsistent analysis records cause a cache miss and fresh analysis.
+Cache read/write permission errors are logged without discarding fresh results.
+Completed JSON is written to a unique temporary file in the cache directory,
+closed, then atomically replaces the destination. A failed replacement leaves
+the previous entry intact and cleans up that request's temporary file.
+
+Existing valid result files and cache keys remain compatible. Identical source
+bytes and options still share an entry after a file is renamed; the response
+reports the current filename. Compact/detailed requests and normalized rotation
+lists continue to reuse the same canonical evidence without repeating OCR.
+Result-cache recovery does not delete or redownload model weights. Persistent
+backend failures still require diagnosis; this is not a promise that a stalled
+native inference can be interrupted safely.
+
+## Detector resource profile
+
+The local PaddleOCR detector now uses `text_det_limit_type="max"` with a default
+maximum image side of 960 pixels. This bounds detector input on large scans;
+small annotations can lose detail, so compare retained raw results and review
+conflicts rather than choosing a dimension solely by confidence.
+
+Set `MULTICAD_OCR_DET_MAX_SIDE` before starting the MCP process to override this
+profile. Only integer values from 64 to 1536 are accepted. The Python
+`analyze_source` API also accepts `ocr_det_max_side`; an explicit value takes
+precedence over the environment. This adds no MCP tool or tool parameter. An OCR
+policy of `off` does not parse or apply the detector setting.
+
+Both the native pipeline key and the persistent result fingerprint include the
+resolved detector size; the result also reports the size and `max` limit type.
+Changing sizes evicts the old pipeline for that language and device. Retry uses
+the same resolved profile. Previous factory-default OCR cache entries cannot be
+used as results from this profile. The backend, CPU threading and confidence
+thresholds are otherwise unchanged.
+
+Native Windows experiments on the large turned-part pilot completed the default
+and 0/90/270-degree calls at 960 pixels. The earlier factory profile and the
+1536-pixel rotated run exceeded the local memory guard; those failures remain
+part of the evidence. The permitted configuration range is not a promise that
+every value fits every machine. These pilot observations do not establish
+exhaustive private-corpus accuracy or confirm conflicting values such as `12/2`.
 
 Returned OCR evidence includes text, confidence, page-coordinate bounding box,
 page number, and parsed engineering candidates such as diameter, radius, linear
