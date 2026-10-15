@@ -15,6 +15,7 @@ from typing import Any
 
 from cad_runtime import data_directory
 
+from .cache import load_result, save_result
 from .dimensions import normalize_length_unit
 from .image import analyze_image_geometry
 from .ocr import configured_ocr_det_max_side, extract_ocr, ocr_capabilities
@@ -371,6 +372,12 @@ def analyze_source(
         raise ValueError("raster_region_threshold must be between 0 and 1")
     unit_resolution = _unit_resolution(source_unit, drawing_unit)
     digest = _digest(source)
+    source_info = {
+        "name": source.name,
+        "suffix": source.suffix.lower(),
+        "size_bytes": source.stat().st_size,
+        "sha256": digest,
+    }
     runtime_fingerprint = _runtime_fingerprint(
         suffix=source.suffix.lower(), ocr_policy=policy, ocr_det_max_side=resolved_det_max_side
     )
@@ -396,8 +403,8 @@ def analyze_source(
     cache_dir = Path(os.environ.get("MULTICAD_VISION_CACHE", str(DEFAULT_CACHE_DIR)))
     cache_path = cache_dir / f"{cache_key}.json"
 
-    if use_cache and cache_path.is_file():
-        cached = json.loads(cache_path.read_text(encoding="utf-8"))
+    cached = load_result(cache_path, source=source_info, options=options) if use_cache else None
+    if cached is not None:
         view = _result_view(cached, include_samples=include_samples)
         view["cache_hit"] = True
         view["request_ms"] = round((time.perf_counter() - started) * 1000.0, 3)
@@ -495,12 +502,7 @@ def analyze_source(
     }
 
     result: dict[str, Any] = {
-        "source": {
-            "name": source.name,
-            "suffix": source.suffix.lower(),
-            "size_bytes": source.stat().st_size,
-            "sha256": digest,
-        },
+        "source": source_info,
         "pipeline_version": PIPELINE_VERSION,
         "runtime_fingerprint": runtime_fingerprint,
         "cache_hit": False,
@@ -508,6 +510,5 @@ def analyze_source(
         "request_ms": round((time.perf_counter() - started) * 1000.0, 3),
     }
     if use_cache:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        cache_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        save_result(cache_path, result)
     return _result_view(result, include_samples=include_samples)

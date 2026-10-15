@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Recover from corrupt or inaccessible vision caches without losing fresh analysis;
+  publish result files atomically and retry transient OCR failures on later requests.
+  Preserve valid existing caches and review flags, and report the current source
+  filename when identical content is reused after a rename.
 - Raised PyJWT and urllib3 security floors to 2.15.0 and 2.8.0 respectively,
   including wheel metadata, and refreshed their locked versions.
 - Added opt-in orthogonal OCR probes with original-coordinate boxes, agreeing-pass

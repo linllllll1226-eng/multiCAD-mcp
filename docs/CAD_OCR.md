@@ -81,6 +81,29 @@ pipeline also discards and rebuilds one corrupted native inference object after 
 runtime error, then retries exactly once. User-injected/test providers are never
 retried silently.
 
+## Recoverable result caching
+
+Successful analyses, including candidates still requiring human confirmation,
+can be reused. A transient OCR `error` or `unavailable` result is returned to the
+caller but is not persisted as a reusable result. The next request retries OCR;
+old cached failures are ignored too. A cache hit does not resolve review flags
+or prove source completeness.
+
+Malformed JSON, duplicate keys, nonfinite values, mismatched source/runtime
+metadata and inconsistent analysis records cause a cache miss and fresh analysis.
+Cache read/write permission errors are logged without discarding fresh results.
+Completed JSON is written to a unique temporary file in the cache directory,
+closed, then atomically replaces the destination. A failed replacement leaves
+the previous entry intact and cleans up that request's temporary file.
+
+Existing valid result files and cache keys remain compatible. Identical source
+bytes and options still share an entry after a file is renamed; the response
+reports the current filename. Compact/detailed requests and normalized rotation
+lists continue to reuse the same canonical evidence without repeating OCR.
+Result-cache recovery does not delete or redownload model weights. Persistent
+backend failures still require diagnosis; this is not a promise that a stalled
+native inference can be interrupted safely.
+
 ## Detector resource profile
 
 The local PaddleOCR detector now uses `text_det_limit_type="max"` with a default
