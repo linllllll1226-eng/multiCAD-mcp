@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Start stdio transports without the upstream update-checking banner so local
+  handshakes do not wait for an optional PyPI version lookup.
 - Clarified numeric-verifier fallbacks, made corpus report strings explicit, and
   centralized test-entity layer initialization to address merge-review findings.
 - Recover from corrupt or inaccessible vision caches without losing fresh analysis;

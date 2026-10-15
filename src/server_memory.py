@@ -29,7 +29,7 @@ def main() -> None:
     """Run the guarded STDIO entry point without a dashboard listener."""
     try:
         logger.info("Starting enhanced multiCAD-MCP in local stdio-only mode")
-        mcp.run(transport="stdio")
+        mcp.run(transport="stdio", show_banner=False)
     except KeyboardInterrupt:
         logger.info("Enhanced multiCAD-MCP stopped by user")
     except Exception as exc:
