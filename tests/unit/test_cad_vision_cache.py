@@ -70,7 +70,7 @@ def test_invalid_cache_is_recomputed_and_replaced(
     warm = analyzer.analyze_source(str(source), ocr_policy="off")
     assert recovered["cache_hit"] is False and warm["cache_hit"] is True
     assert recovered["analysis"] == original["analysis"]
-    assert json.loads(path.read_text())["source"] == recovered["source"]
+    assert json.loads(path.read_text(encoding="utf-8"))["source"] == recovered["source"]
 
 
 @pytest.mark.parametrize("changed", ["source", "pipeline_version", "runtime_fingerprint"])
@@ -80,14 +80,14 @@ def test_cache_with_mismatched_result_binding_is_not_reused(
     source, cache = drawing
     original = analyzer.analyze_source(str(source), ocr_policy="off")
     path = next(cache.glob("*.json"))
-    record = json.loads(path.read_text())
+    record = json.loads(path.read_text(encoding="utf-8"))
     if changed == "source":
         record["source"]["sha256"] = "0" * 64
     elif changed == "pipeline_version":
         record[changed] = "obsolete"
     else:
         record[changed] = {"source": {"provider": "wrong"}}
-    path.write_text(json.dumps(record))
+    path.write_text(json.dumps(record), encoding="utf-8")
     recovered = analyzer.analyze_source(str(source), ocr_policy="off")
     assert recovered["cache_hit"] is False
     assert recovered["analysis"] == original["analysis"]
@@ -98,9 +98,9 @@ def test_nonfinite_json_in_cache_is_not_returned(drawing: tuple[Path, Path], val
     source, cache = drawing
     analyzer.analyze_source(str(source), ocr_policy="off")
     path = next(cache.glob("*.json"))
-    record = json.loads(path.read_text())
+    record = json.loads(path.read_text(encoding="utf-8"))
     record["analysis"]["unexpected_nonfinite"] = "PLACEHOLDER"
-    path.write_text(json.dumps(record).replace('"PLACEHOLDER"', value))
+    path.write_text(json.dumps(record).replace('"PLACEHOLDER"', value), encoding="utf-8")
     recovered = analyzer.analyze_source(str(source), ocr_policy="off")
     assert recovered["cache_hit"] is False
     json.dumps(recovered, allow_nan=False)
@@ -110,8 +110,8 @@ def test_duplicate_json_keys_in_cache_are_not_returned(drawing: tuple[Path, Path
     source, cache = drawing
     analyzer.analyze_source(str(source), ocr_policy="off")
     path = next(cache.glob("*.json"))
-    raw = path.read_text()
-    path.write_text('{"cache_hit": false,' + raw[1:])
+    raw = path.read_text(encoding="utf-8")
+    path.write_text('{"cache_hit": false,' + raw[1:], encoding="utf-8")
     assert analyzer.analyze_source(str(source), ocr_policy="off")["cache_hit"] is False
 
 
@@ -139,7 +139,7 @@ def test_cache_directory_failure_does_not_block_analysis(drawing: tuple[Path, Pa
     result = analyzer.analyze_source(str(source), ocr_policy="off")
     assert result["analysis"]["dimensions"]
     assert result["cache_hit"] is False
-    assert cache.read_text() == "A file occupies the configured cache directory"
+    assert cache.read_text(encoding="utf-8") == "A file occupies the configured cache directory"
 
 
 def test_failed_atomic_replace_preserves_previous_record_and_removes_temporary_file(
@@ -154,7 +154,7 @@ def test_failed_atomic_replace_preserves_previous_record_and_removes_temporary_f
     def blocked_replace(temporary: Any, destination: Any) -> None:
         replacements.append((Path(temporary), Path(destination)))
         assert Path(destination).read_bytes() == previous
-        assert json.loads(Path(temporary).read_text())["analysis"]["dimensions"]
+        assert json.loads(Path(temporary).read_text(encoding="utf-8"))["analysis"]["dimensions"]
         raise PermissionError("destination temporarily locked")
 
     monkeypatch.setattr("os.replace", blocked_replace)
@@ -186,7 +186,10 @@ def test_identical_content_at_another_filename_reports_current_source(
     assert warm["source"]["name"] == renamed.name
     assert warm["source"]["sha256"] == cold["source"]["sha256"]
     assert len(list(cache.glob("*.json"))) == 1
-    assert json.loads(next(cache.glob("*.json")).read_text())["source"]["name"] == source.name
+    assert (
+        json.loads(next(cache.glob("*.json")).read_text(encoding="utf-8"))["source"]["name"]
+        == source.name
+    )
 
 
 def test_legacy_cached_ocr_error_is_retried(drawing: tuple[Path, Path], monkeypatch: Any) -> None:
@@ -200,9 +203,9 @@ def test_legacy_cached_ocr_error_is_retried(drawing: tuple[Path, Path], monkeypa
     monkeypatch.setattr(analyzer, "extract_ocr", provider)
     analyzer.analyze_source(str(source), ocr_policy="force")
     path = next(cache.glob("*.json"))
-    record = json.loads(path.read_text())
+    record = json.loads(path.read_text(encoding="utf-8"))
     record["analysis"]["ocr"]["status"] = "error"
-    path.write_text(json.dumps(record))
+    path.write_text(json.dumps(record), encoding="utf-8")
     recovered = analyzer.analyze_source(str(source), ocr_policy="force")
     assert recovered["cache_hit"] is False and len(calls) == 2
     assert recovered["analysis"]["ocr"]["status"] == "ok"
@@ -215,7 +218,7 @@ def test_inconsistent_analysis_cache_is_recomputed(
     source, cache = drawing
     original = analyzer.analyze_source(str(source), ocr_policy="off")
     path = next(cache.glob("*.json"))
-    record = json.loads(path.read_text())
+    record = json.loads(path.read_text(encoding="utf-8"))
     if changed == "policy":
         record["analysis"]["ocr_policy"] = "force"
     elif changed == "units":
@@ -224,7 +227,7 @@ def test_inconsistent_analysis_cache_is_recomputed(
         record["analysis"]["dimensions"] = {}
     else:
         record["analysis"]["dimension_count"] = -1
-    path.write_text(json.dumps(record))
+    path.write_text(json.dumps(record), encoding="utf-8")
     recovered = analyzer.analyze_source(str(source), ocr_policy="off")
     assert recovered["cache_hit"] is False
     assert recovered["analysis"] == original["analysis"]
@@ -245,8 +248,8 @@ def test_simultaneous_cache_writers_publish_complete_independent_files(
     def synchronized_replace(temporary: Any, destination: Any) -> None:
         temporary_files.append(Path(temporary))
         assert Path(temporary).parent == Path(destination).parent == cache
-        assert json.loads(Path(temporary).read_text())["writer"] in (0, 1)
-        assert json.loads(path.read_text())["analysis"] == original["analysis"]
+        assert json.loads(Path(temporary).read_text(encoding="utf-8"))["writer"] in (0, 1)
+        assert json.loads(path.read_text(encoding="utf-8"))["analysis"] == original["analysis"]
         barrier.wait(timeout=5)
         replace(temporary, destination)
 
@@ -258,7 +261,7 @@ def test_simultaneous_cache_writers_publish_complete_independent_files(
         for future in futures:
             future.result(timeout=10)
     assert len(set(temporary_files)) == 2
-    assert json.loads(path.read_text())["writer"] in (0, 1)
+    assert json.loads(path.read_text(encoding="utf-8"))["writer"] in (0, 1)
     assert list(cache.iterdir()) == [path]
     assert analyzer.analyze_source(str(source), ocr_policy="off")["cache_hit"] is True
 
@@ -271,7 +274,7 @@ def test_cache_opt_out_does_not_touch_a_blocked_cache_directory(
     result = analyzer.analyze_source(str(source), use_cache=False, ocr_policy="off")
     assert result["cache_hit"] is False and result["analysis"]["dimensions"]
     assert not caplog.records
-    assert cache.read_text() == "not a directory"
+    assert cache.read_text(encoding="utf-8") == "not a directory"
 
 
 def test_successful_cache_preserves_unconfirmed_orientation_evidence(
