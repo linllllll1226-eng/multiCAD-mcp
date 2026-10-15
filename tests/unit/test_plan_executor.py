@@ -74,10 +74,17 @@ class CreatedEntity:
 
     ObjectName = "AcDbLine"
 
-    def __init__(self, handle: str, *, fail_linetype: bool = False, fail_delete: bool = False):
+    def __init__(
+        self,
+        handle: str,
+        *,
+        layer: str = "AI_PREVIEW_OUTLINE",
+        fail_linetype: bool = False,
+        fail_delete: bool = False,
+    ):
         """Create one line-like object."""
         self.Handle = handle
-        self.Layer = "AI_PREVIEW_OUTLINE"
+        self.Layer = layer
         self._linetype = "ByLayer"
         self.fail_linetype = fail_linetype
         self.fail_delete = fail_delete
@@ -567,9 +574,8 @@ class PresentationDimension(CreatedEntity):
 
     def __init__(self, handle, object_type, points, *, fail_property=""):
         """Keep native geometry and refused presentation properties inspectable."""
-        super().__init__(handle)
+        super().__init__(handle, layer="AI_PREVIEW_DIM")
         self.ObjectName = object_type
-        self.Layer = "AI_PREVIEW_DIM"
         self.fail_property = fail_property
         self.presentation_writes = []
         self._text_height = 2.5

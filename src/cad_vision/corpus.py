@@ -113,8 +113,10 @@ def score_predictions(manifest: Path, predictions: Path) -> dict:
         "release_approved": False,
         "limitations": [
             "Label completeness and independent review are declarations, not authenticated facts.",
-            "Source/prediction hashes bind this local snapshot; "
-            "they do not authenticate CAD sessions.",
+            (
+                "Source/prediction hashes bind this local snapshot; "
+                + "they do not authenticate CAD sessions."
+            ),
             "No recognition result establishes persisted-DWG or production-release acceptance.",
         ],
     }

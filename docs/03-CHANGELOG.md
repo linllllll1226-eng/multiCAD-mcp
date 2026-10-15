@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Clarified numeric-verifier fallbacks, made corpus report strings explicit, and
+  centralized test-entity layer initialization to address merge-review findings.
 - Recover from corrupt or inaccessible vision caches without losing fresh analysis;
   publish result files atomically and retry transient OCR failures on later requests.
   Preserve valid existing caches and review flags, and report the current source

@@ -188,6 +188,8 @@ def read_entity_state(entity: Any) -> dict[str, Any]:
                 try:
                     value = math.degrees(float(value))
                 except (TypeError, ValueError, OverflowError):
+                    # Retain the invalid observation so numeric verification fails
+                    # instead of inventing a replacement angle.
                     pass
             state[output] = _serializable(value)
     for extension_name, rotated_name in (
@@ -215,6 +217,8 @@ def read_entity_state(entity: Any) -> dict[str, Any]:
         try:
             state["diameter"] = _serializable(2.0 * float(state["radius"]))
         except (TypeError, ValueError, OverflowError):
+            # Keep the observed radius and omit an unavailable derived diameter.
+            # Required numeric comparisons will still reject the invalid radius.
             pass
     coordinates = state.get("coordinates")
     vertices = _normalize_points(
