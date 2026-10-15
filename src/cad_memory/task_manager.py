@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import ntpath
 from pathlib import Path
@@ -32,6 +33,7 @@ DEFAULT_FORMAL_LAYER_MAP = {
     "AI_UNCERTAIN": "AI_UNCERTAIN",
 }
 REVERT_LAYER = "AI_REVERTED"
+logger = logging.getLogger(__name__)
 
 
 def _canonical_hash(value: Any) -> str:
@@ -256,12 +258,12 @@ def _ensure_revert_layer(document: Any) -> Any:
         layer = document.Layers.Add(REVERT_LAYER)
     try:
         layer.Color = 8
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Revert isolation layer color is unavailable: %s", exc)
     try:
         layer.Linetype = "Continuous"
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Revert isolation layer linetype is unavailable: %s", exc)
     return layer
 
 
@@ -348,15 +350,19 @@ class TaskTrackingManager:
             task["active_entity_count"] = 0 if not drawing_match else None
             if drawing_match and include_active_counts:
                 active = 0
+                count_errors = []
                 for row in self.store.get_ai_task_entities(task["task_id"]):
                     try:
                         entity = document.HandleToObject(row["handle"])
-                        metadata = read_entity_provenance(entity)
+                        metadata = read_entity_provenance(entity, raise_on_error=True)
                         if metadata and metadata.get("task_id") == task["task_id"]:
                             active += 1
-                    except Exception:
-                        pass
-                task["active_entity_count"] = active
+                    except Exception as exc:
+                        count_errors.append({"handle": row["handle"], "error": str(exc)})
+                task["active_entity_count"] = active if not count_errors else None
+                if count_errors:
+                    task["observed_active_entity_count"] = active
+                    task["active_entity_count_errors"] = count_errors
         return {
             "count": len(tasks),
             "offset": offset,

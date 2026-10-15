@@ -208,8 +208,10 @@ def register_export_tools(mcp):
                 doc = adapter._get_document("export_data")
                 doc_stem = Path(doc.Name).stem if doc and doc.Name else "drawing"
                 filename = f"{doc_stem}_data.xlsx"
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(
+                    "Drawing name is unavailable; retaining the default export filename: %s", exc
+                )
 
         try:
             # For "selected" scope, check selection first

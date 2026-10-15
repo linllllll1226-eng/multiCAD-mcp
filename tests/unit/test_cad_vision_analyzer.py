@@ -8,7 +8,6 @@ from typing import Any
 import pytest
 
 import cad_vision.analyzer as analyzer_module
-from cad_vision.analyzer import analyze_source, vision_capabilities
 from cad_vision.pdf import extract_vector_pdf
 
 
@@ -52,7 +51,7 @@ def _make_mixed_pdf(path: Path, page_modes: list[str]) -> None:
 
 
 def test_capabilities_are_read_only_and_json_safe() -> None:
-    payload = vision_capabilities()
+    payload = analyzer_module.vision_capabilities()
     assert payload["pipeline_version"]
     assert ".pdf" in payload["supported_extensions"]
     json.dumps(payload)
@@ -64,8 +63,8 @@ def test_vector_pdf_analysis_and_cache(tmp_path: Path, monkeypatch: Any) -> None
     _make_vector_pdf(source)
     monkeypatch.setenv("MULTICAD_VISION_CACHE", str(cache))
 
-    cold = analyze_source(str(source), use_cache=True, include_samples=False)
-    warm = analyze_source(str(source), use_cache=True, include_samples=False)
+    cold = analyzer_module.analyze_source(str(source), use_cache=True, include_samples=False)
+    warm = analyzer_module.analyze_source(str(source), use_cache=True, include_samples=False)
 
     assert cold["cache_hit"] is False
     assert warm["cache_hit"] is True
@@ -90,7 +89,7 @@ def test_vector_dimensions_use_distinct_line_boxes_inside_one_text_block(tmp_pat
     assert dimensions[0]["bbox"] != dimensions[1]["bbox"]
     assert dimensions[0]["bbox"][3] <= dimensions[1]["bbox"][1]
 
-    analyzed = analyze_source(str(source), use_cache=False, ocr_policy="off")
+    analyzed = analyzer_module.analyze_source(str(source), use_cache=False, ocr_policy="off")
     analyzed_dimensions = [
         item for item in analyzed["analysis"]["dimensions"] if item["kind"] == "diameter"
     ]
@@ -103,8 +102,8 @@ def test_sample_toggle_reuses_one_canonical_cache_entry(tmp_path: Path, monkeypa
     _make_vector_pdf(source)
     monkeypatch.setenv("MULTICAD_VISION_CACHE", str(cache))
 
-    compact = analyze_source(str(source), use_cache=True, include_samples=False)
-    detailed = analyze_source(str(source), use_cache=True, include_samples=True)
+    compact = analyzer_module.analyze_source(str(source), use_cache=True, include_samples=False)
+    detailed = analyzer_module.analyze_source(str(source), use_cache=True, include_samples=True)
 
     assert compact["cache_hit"] is False
     assert compact["samples_included"] is False
@@ -119,7 +118,7 @@ def test_rejects_unsupported_source(tmp_path: Path) -> None:
     source = tmp_path / "unsafe.exe"
     source.write_bytes(b"not an image")
     with pytest.raises(ValueError, match="Unsupported source extension"):
-        analyze_source(str(source))
+        analyzer_module.analyze_source(str(source))
 
 
 def test_raster_geometry_handles_current_opencv_shape(tmp_path: Path) -> None:
@@ -132,7 +131,7 @@ def test_raster_geometry_handles_current_opencv_shape(tmp_path: Path) -> None:
     draw.rectangle((100, 100, 650, 380), outline="black", width=5)
     image.rotate(5, fillcolor="white").save(source)
 
-    result = analyze_source(str(source), use_cache=False, include_samples=False)
+    result = analyzer_module.analyze_source(str(source), use_cache=False, include_samples=False)
     assert result["analysis"]["line_candidate_count"] > 0
     assert abs(result["analysis"]["residual_skew_degrees"]) < 1.0
 
@@ -148,7 +147,7 @@ def test_raster_geometry_preserves_close_parallel_lines(tmp_path: Path) -> None:
     draw.line((60, 108, 440, 108), fill="black", width=1)
     image.save(source)
 
-    result = analyze_source(str(source), use_cache=False, include_samples=True)
+    result = analyzer_module.analyze_source(str(source), use_cache=False, include_samples=True)
     analysis = result["analysis"]
     assert analysis["close_parallel_pair_count"] >= 1
     assert any(
@@ -168,7 +167,7 @@ def test_raster_geometry_preserves_two_lines_only_three_pixels_apart(tmp_path: P
     draw.line((60, 103, 440, 103), fill="black", width=1)
     image.save(source)
 
-    result = analyze_source(str(source), use_cache=False, include_samples=True)
+    result = analyzer_module.analyze_source(str(source), use_cache=False, include_samples=True)
     assert any(
         pair["axis"] == "horizontal"
         and 2.0 <= pair["gap_px"] <= 4.0
@@ -187,7 +186,7 @@ def test_raster_geometry_does_not_split_one_thick_line_into_a_pair(tmp_path: Pat
     draw.line((60, 100, 440, 100), fill="black", width=4)
     image.save(source)
 
-    result = analyze_source(str(source), use_cache=False, include_samples=True)
+    result = analyzer_module.analyze_source(str(source), use_cache=False, include_samples=True)
     assert not any(
         pair["axis"] == "horizontal" and pair["gap_px"] < 6.0
         for pair in result["analysis"]["close_parallel_pairs"]
@@ -211,7 +210,7 @@ def test_raster_source_routes_to_optional_ocr(tmp_path: Path, monkeypatch: Any) 
         },
     )
 
-    result = analyze_source(str(source), use_cache=False, use_ocr=True)
+    result = analyzer_module.analyze_source(str(source), use_cache=False, use_ocr=True)
     assert result["analysis"]["ocr"]["status"] == "ok"
     assert result["analysis"]["ocr"]["dimensions"][0]["value"] == 15.0
     assert result["analysis"]["ocr_targets_selected"] == [
@@ -246,7 +245,7 @@ def test_hybrid_pdf_runs_page_ocr_even_when_vector_title_exists(
         }
 
     monkeypatch.setattr("cad_vision.analyzer.extract_ocr", fake_ocr)
-    result = analyze_source(str(source), use_cache=False, use_ocr=True)
+    result = analyzer_module.analyze_source(str(source), use_cache=False, use_ocr=True)
 
     assert captured["page_numbers"] == [1]
     assert captured["regions"] == {}
@@ -267,7 +266,7 @@ def test_auto_ocr_targets_only_incomplete_pdf_pages(tmp_path: Path, monkeypatch:
         return {"status": "ok", "provider": "paddleocr", "dimensions": []}
 
     monkeypatch.setattr("cad_vision.analyzer.extract_ocr", fake_ocr)
-    result = analyze_source(str(source), use_cache=False, use_ocr=True)
+    result = analyzer_module.analyze_source(str(source), use_cache=False, use_ocr=True)
 
     assert captured["page_numbers"] == [2]
     assert [target["page"] for target in result["analysis"]["ocr_targets_selected"]] == [2]
@@ -285,7 +284,7 @@ def test_auto_ocr_can_target_embedded_raster_region_without_rasterizing_page(
         return {"status": "ok", "provider": "paddleocr", "dimensions": []}
 
     monkeypatch.setattr("cad_vision.analyzer.extract_ocr", fake_ocr)
-    result = analyze_source(str(source), use_cache=False, use_ocr=True)
+    result = analyzer_module.analyze_source(str(source), use_cache=False, use_ocr=True)
 
     assert captured["page_numbers"] == []
     assert list(captured["regions"]) == [1]
@@ -304,9 +303,11 @@ def test_auto_ocr_ignores_small_logo_but_force_and_off_are_explicit(
         return {"status": "ok", "provider": "paddleocr", "dimensions": []}
 
     monkeypatch.setattr("cad_vision.analyzer.extract_ocr", fake_ocr)
-    automatic = analyze_source(str(source), use_cache=False, use_ocr=True)
-    forced = analyze_source(str(source), use_cache=False, ocr_policy="force")
-    disabled = analyze_source(str(source), use_cache=False, ocr_policy="off", use_ocr=True)
+    automatic = analyzer_module.analyze_source(str(source), use_cache=False, use_ocr=True)
+    forced = analyzer_module.analyze_source(str(source), use_cache=False, ocr_policy="force")
+    disabled = analyzer_module.analyze_source(
+        str(source), use_cache=False, ocr_policy="off", use_ocr=True
+    )
 
     assert automatic["analysis"]["ocr"]["status"] == "not_required"
     assert calls[0]["page_numbers"] == [1]
@@ -319,7 +320,7 @@ def test_off_policy_preserves_required_hybrid_pdf_ocr_gaps(tmp_path: Path) -> No
     source = tmp_path / "hybrid-off.pdf"
     _make_mixed_pdf(source, ["hybrid"])
 
-    result = analyze_source(str(source), use_cache=False, ocr_policy="off")
+    result = analyzer_module.analyze_source(str(source), use_cache=False, ocr_policy="off")
 
     analysis = result["analysis"]
     coverage = analysis["ocr_coverage"]
@@ -341,7 +342,7 @@ def test_off_policy_marks_raster_source_ocr_as_not_run(tmp_path: Path, monkeypat
         lambda *args, **kwargs: {"mode": "raster_geometry", "dimensions": []},
     )
 
-    result = analyze_source(str(source), use_cache=False, ocr_policy="off")
+    result = analyzer_module.analyze_source(str(source), use_cache=False, ocr_policy="off")
 
     analysis = result["analysis"]
     required = [{"mode": "source", "reason": "raster_source"}]
@@ -401,7 +402,7 @@ def test_vector_and_ocr_dimension_deduplication_is_location_aware(
         },
     )
 
-    result = analyze_source(str(source), use_cache=False, ocr_policy="force")
+    result = analyzer_module.analyze_source(str(source), use_cache=False, ocr_policy="force")
     dimensions = result["analysis"]["dimensions"]
     assert len(dimensions) == (1 if overlap else 2)
     if overlap:
@@ -450,7 +451,7 @@ def test_large_vector_block_does_not_absorb_a_different_location(
         },
     )
 
-    result = analyze_source(str(source), use_cache=False, ocr_policy="force")
+    result = analyzer_module.analyze_source(str(source), use_cache=False, ocr_policy="force")
 
     dimensions = result["analysis"]["dimensions"]
     assert len(dimensions) == 2
@@ -508,7 +509,7 @@ def test_repeated_ocr_evidence_at_one_location_merges_into_one_record(
         },
     )
 
-    result = analyze_source(str(source), use_cache=False, ocr_policy="force")
+    result = analyzer_module.analyze_source(str(source), use_cache=False, ocr_policy="force")
 
     dimensions = result["analysis"]["dimensions"]
     assert len(dimensions) == 1
@@ -526,10 +527,16 @@ def test_unit_resolution_and_ocr_policy_change_cache_keys(tmp_path: Path, monkey
         lambda *args, **kwargs: {"status": "ok", "provider": "paddleocr", "dimensions": []},
     )
 
-    unresolved = analyze_source(str(source), use_cache=True, ocr_policy="off")
-    metric = analyze_source(str(source), use_cache=True, ocr_policy="off", source_unit="mm")
-    metric_warm = analyze_source(str(source), use_cache=True, ocr_policy="off", source_unit="mm")
-    forced = analyze_source(str(source), use_cache=True, ocr_policy="force", source_unit="mm")
+    unresolved = analyzer_module.analyze_source(str(source), use_cache=True, ocr_policy="off")
+    metric = analyzer_module.analyze_source(
+        str(source), use_cache=True, ocr_policy="off", source_unit="mm"
+    )
+    metric_warm = analyzer_module.analyze_source(
+        str(source), use_cache=True, ocr_policy="off", source_unit="mm"
+    )
+    forced = analyzer_module.analyze_source(
+        str(source), use_cache=True, ocr_policy="force", source_unit="mm"
+    )
 
     assert unresolved["analysis"]["unit_resolution"]["status"] == "unresolved"
     assert unresolved["analysis"]["dimensions"][0]["unit"] is None
@@ -559,10 +566,10 @@ def test_provider_and_ocr_profile_drift_change_cache_keys(tmp_path: Path, monkey
         lambda *args, **kwargs: {"status": "ok", "provider": "paddleocr", "dimensions": []},
     )
 
-    cold = analyze_source(str(source), use_cache=True, ocr_policy="force")
-    warm = analyze_source(str(source), use_cache=True, ocr_policy="force")
+    cold = analyzer_module.analyze_source(str(source), use_cache=True, ocr_policy="force")
+    warm = analyzer_module.analyze_source(str(source), use_cache=True, ocr_policy="force")
     versions["paddleocr"] = "3.4"
-    provider_drift = analyze_source(str(source), use_cache=True, ocr_policy="force")
+    provider_drift = analyzer_module.analyze_source(str(source), use_cache=True, ocr_policy="force")
     monkeypatch.setattr(
         analyzer_module,
         "OCR_RUNTIME_PROFILE",
@@ -573,7 +580,7 @@ def test_provider_and_ocr_profile_drift_change_cache_keys(tmp_path: Path, monkey
             "device": "cpu",
         },
     )
-    model_drift = analyze_source(str(source), use_cache=True, ocr_policy="force")
+    model_drift = analyzer_module.analyze_source(str(source), use_cache=True, ocr_policy="force")
 
     assert cold["cache_hit"] is False
     assert warm["cache_hit"] is True
@@ -588,7 +595,7 @@ def test_conflicting_source_and_drawing_units_remain_unresolved(tmp_path: Path) 
     source = tmp_path / "fixture.pdf"
     _make_vector_pdf(source)
 
-    result = analyze_source(
+    result = analyzer_module.analyze_source(
         str(source),
         use_cache=False,
         ocr_policy="off",

@@ -347,10 +347,10 @@ def main():
         "# Real drawing pilot measurements",
         "",
         "Partial labels: precision and whole-drawing accuracy are unavailable. "
-        "False-pass zero with zero completion claims is not evidence of robustness.",
+        + "False-pass zero with zero completion claims is not evidence of robustness.",
         "",
         "| Case | Geometry matched/labelled | Text matched/labelled "
-        "| Dimensions matched/labelled | OCR |",
+        + "| Dimensions matched/labelled | OCR |",
         "| --- | --- | --- | --- | --- |",
     ]
     for result in results:
@@ -365,9 +365,9 @@ def main():
     lines += [
         "",
         "Production reconstruction gate: FAILED "
-        "(incomplete labels, bounded output, no DWG lifecycle proof).",
+        + "(incomplete labels, bounded output, no DWG lifecycle proof).",
         "Red overlays are selected expected boundaries; "
-        "blue overlays are actual detector candidates.",
+        + "blue overlays are actual detector candidates.",
     ]
     (args.output / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))

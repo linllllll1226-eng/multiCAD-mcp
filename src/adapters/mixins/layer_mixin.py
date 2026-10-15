@@ -196,16 +196,21 @@ class LayerMixin:
                 def _temp_ss(doc, name):
                     try:
                         doc.SelectionSets.Item(name).Delete()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug(
+                            "Previous layer-count selection set was unavailable: %s",
+                            exc,
+                        )
                     ss = doc.SelectionSets.Add(name)
                     try:
                         yield ss
                     finally:
                         try:
                             ss.Delete()
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug(
+                                "Temporary layer-count selection set cleanup failed: %s", exc
+                            )
 
                 def to_variant_array(types, values):
                     return win32com.client.VARIANT(types, values)
@@ -238,7 +243,6 @@ class LayerMixin:
 
                     dyn_layer = win32com.client.dynamic.Dispatch(layer)
 
-                    layer_color_val = 7  # Default white
                     try:
                         # Try TrueColor first for modern CAD compatibility
                         if hasattr(dyn_layer, "TrueColor"):

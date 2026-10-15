@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -11,6 +12,8 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from cad_runtime import data_directory
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_DATABASE_PATH = data_directory() / "cad_memory.db"
 ALLOWED_TABLES = {"corrections", "drawing_profiles", "execution_results"}
@@ -53,7 +56,8 @@ def _decode_json_fields(row: dict[str, Any]) -> dict[str, Any]:
             try:
                 row[key] = json.loads(value)
             except json.JSONDecodeError:
-                pass
+                # Preserve legacy/raw data without logging potentially private contents.
+                logger.warning("Invalid persisted JSON in field %s; retaining raw value", key)
     if "confirmed_by_user" in row:
         row["confirmed_by_user"] = bool(row["confirmed_by_user"])
         row["enforceable"] = row["confirmed_by_user"]

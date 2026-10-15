@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import contextmanager
 from typing import Any, Callable, Iterator
 
@@ -12,6 +13,8 @@ from .provenance import (
     write_entity_provenance,
 )
 from .validator import PlanValidator
+
+logger = logging.getLogger(__name__)
 
 
 def _coord(value: Any) -> tuple[float, float, float]:
@@ -47,8 +50,9 @@ def undo_group(adapter: Any) -> Iterator[None]:
         if started:
             try:
                 document.EndUndoMark()
-            except Exception:
-                pass
+            except Exception as exc:
+                # Entity ownership/rollback does not depend on optional undo marks.
+                logger.warning("Could not close the optional CAD undo mark: %s", exc)
 
 
 class PlanExecutor:
@@ -163,8 +167,9 @@ class PlanExecutor:
 
         try:
             adapter.refresh_view()
-        except Exception:
-            pass
+        except Exception as exc:
+            # A display refresh failure must not undo verified entity creation.
+            logger.warning("CAD display refresh failed after execution: %s", exc)
         success = len(results) == len(plan.entities) and all(
             result.get("success") for result in results
         )

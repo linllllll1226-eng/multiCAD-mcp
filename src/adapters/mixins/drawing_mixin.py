@@ -484,7 +484,7 @@ class DrawingMixin:
         # Calculate perpendicular offset point for the dimension line
         dx = end_pt[0] - start_pt[0]
         dy = end_pt[1] - start_pt[1]
-        length = math.sqrt(dx * dx + dy * dy)
+        length = math.hypot(dx, dy)
 
         if length > 0:
             # Perpendicular to (dx, dy) is (-dy, dx)
@@ -692,9 +692,7 @@ class DrawingMixin:
                 )
 
         # Normalize base point to 3D
-        base_pt = CADInterface.normalize_coordinate(base_point)
-        _base_array = self._to_variant_array(base_pt)
-
+        CADInterface.normalize_coordinate(base_point)
         try:
             # Create MLeader with base point
             # Note: ZWCAD/AutoCAD AddMLeader often takes (PointsArray, Index)
@@ -747,8 +745,11 @@ class DrawingMixin:
                     # Otherwise try via MText attribute if exposed
                     try:
                         mleader.MText.Height = text_height
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug(
+                            "Both multi-leader text-height properties are unavailable: %s",
+                            exc,
+                        )
             else:
                 set_prop(mleader, "ContentType", 0)  # None
 
@@ -761,8 +762,8 @@ class DrawingMixin:
             # Force update to ensure geometry is calculated
             try:
                 mleader.Update()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Optional initial multi-leader display update failed: %s", exc)
 
             # Handle additional leader groups using _MLEADEREDIT command
             if len(leader_groups) > 1:
@@ -771,8 +772,10 @@ class DrawingMixin:
                     try:
                         doc = self._get_document("draw_mleader")
                         doc.Regen(1)  # acAllViewports = 1
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug(
+                            "Optional regeneration before adding leader groups failed: %s", exc
+                        )
 
                     # Construct the command string
                     # Syntax: _AIMLEADEREDITADD (handent "HANDLE") PT1 PT2 ... \x1B
@@ -817,8 +820,8 @@ class DrawingMixin:
             # Force update
             try:
                 mleader.Update()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Optional final multi-leader display update failed: %s", exc)
 
             return self._finalize_entity(
                 mleader,
@@ -915,8 +918,8 @@ class DrawingMixin:
 
             try:
                 table.Update()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Optional table display update failed: %s", exc)
 
             return self._finalize_entity(
                 table,

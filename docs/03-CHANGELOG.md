@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Review 37 empty exception handlers and the remaining non-declaration CodeQL
+  findings. Keep unreadable task counts and invalid exported geometry explicitly
+  unknown, confirm active drawings before caching them, and stop selection-set
+  recreation after refused deletion. Retain observable best-effort cleanup and
+  optional-property fallbacks; preserve typing-only interface declarations.
 - Start stdio transports without the upstream update-checking banner so local
   handshakes do not wait for an optional PyPI version lookup.
 - Clarified numeric-verifier fallbacks, made corpus report strings explicit, and

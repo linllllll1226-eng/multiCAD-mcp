@@ -14,6 +14,19 @@ from mcp_tools.constants import COLOR_MAP
 logger = logging.getLogger(__name__)
 
 
+def _export_measurement(value: Any, name: str, errors: dict[str, str]) -> float:
+    """Keep unavailable/invalid geometry distinct from a measured zero."""
+    try:
+        measurement = float(value)
+        if not math.isfinite(measurement) or measurement < 0:
+            raise ValueError("Expected a finite nonnegative measurement")
+    except (TypeError, ValueError, OverflowError) as exc:
+        errors[name] = str(exc)
+        return 0.0
+    errors.pop(name, None)
+    return measurement
+
+
 class ExportMixin:
     """Mixin for data extraction and export operations."""
 
@@ -285,8 +298,8 @@ class ExportMixin:
         """Inline context manager for selection sets, to avoid circular imports."""
         try:
             document.SelectionSets.Item(name).Delete()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Previous export selection set lookup or cleanup was unavailable: %s", exc)
 
         ss = document.SelectionSets.Add(name)
         try:
@@ -294,8 +307,8 @@ class ExportMixin:
         finally:
             try:
                 ss.Delete()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Temporary export selection set cleanup failed: %s", exc)
 
     def _extract_single_entity_data(
         self,
@@ -327,36 +340,27 @@ class ExportMixin:
         object_type_str = str(object_type)
         object_type_upper = object_type_str.upper()
 
-        # OPTIMIZATION: Skip Color and Name for most entities (lazy fetch)
-        needs_color = True  # Most entities need color
+        # Color is always read; block names are fetched only when relevant.
         needs_name = "BLOCK" in object_type_upper or "INSERT" in object_type_upper
 
-        color = "ByLayer"
         name = ""
 
-        if needs_color:
-            # Use dynamic dispatch for more reliable property access
-            dyn_entity = win32com.client.dynamic.Dispatch(entity)
+        dyn_entity = win32com.client.dynamic.Dispatch(entity)
 
-            color_val = 256  # Default ByLayer
-            try:
-                # Standard Color property (ACI)
-                raw_color = getattr(dyn_entity, "Color", 256)
+        try:
+            # Standard Color property (ACI)
+            raw_color = getattr(dyn_entity, "Color", 256)
 
-                # If it's a TrueColor object, we need the ColorIndex
-                if hasattr(raw_color, "ColorIndex"):
-                    color_val = int(raw_color.ColorIndex)
-                else:
-                    color_val = int(raw_color)
-            except (TypeError, ValueError, AttributeError):
-                color_val = 256
+            # If it's a TrueColor object, we need the ColorIndex
+            if hasattr(raw_color, "ColorIndex"):
+                color_val = int(raw_color.ColorIndex)
+            else:
+                color_val = int(raw_color)
+        except (TypeError, ValueError, AttributeError):
+            color_val = 256
 
-            color = (
-                "ByLayer" if color_val == 256 else color_map_reverse.get(color_val, str(color_val))
-            )
-            calls_made += 1
-        else:
-            com_call_stats["properties_skipped"] += 1
+        color = "ByLayer" if color_val == 256 else color_map_reverse.get(color_val, str(color_val))
+        calls_made += 1
 
         if needs_name:
             name = self._fast_get_property(entity, "Name", "")
@@ -371,6 +375,7 @@ class ExportMixin:
         area = 0.0
         radius = 0.0
         circumference = 0.0
+        geometry_errors: dict[str, str] = {}
 
         # OPTIMIZATION: Type-specific property extraction (minimize COM calls)
         if "CIRCLE" in object_type_upper:
@@ -380,14 +385,15 @@ class ExportMixin:
             com_call_stats["calls_by_type"]["CIRCLE"] += 1
             com_call_stats["properties_skipped"] += 2
 
-            if radius_val is not None:
-                try:
-                    radius = float(radius_val)
-                    if radius > 0:
-                        circumference = 2 * math.pi * radius
-                        area = math.pi * radius * radius
-                except (ValueError, TypeError):
-                    pass
+            radius = _export_measurement(radius_val, "Radius", geometry_errors)
+            if "Radius" in geometry_errors:
+                geometry_errors["Area"] = "Radius is unavailable"
+                geometry_errors["Circumference"] = "Radius is unavailable"
+            else:
+                circumference = _export_measurement(
+                    2 * math.pi * radius, "Circumference", geometry_errors
+                )
+                area = _export_measurement(math.pi * radius * radius, "Area", geometry_errors)
             if do_timing:
                 perf_property_times["radius"] += time.perf_counter() - perf_t
 
@@ -399,17 +405,11 @@ class ExportMixin:
             com_call_stats["calls_by_type"]["ARC"] += 1
             com_call_stats["properties_skipped"] += 1
 
-            if radius_val is not None:
-                try:
-                    radius = float(radius_val)
-                except (ValueError, TypeError):
-                    pass
-            if length_val is not None:
-                try:
-                    length = float(length_val)
-                    circumference = length  # Arc length
-                except (ValueError, TypeError):
-                    pass
+            radius = _export_measurement(radius_val, "Radius", geometry_errors)
+            length = _export_measurement(length_val, "Length", geometry_errors)
+            circumference = length  # Arc length
+            if "Length" in geometry_errors:
+                geometry_errors["Circumference"] = "Arc length is unavailable"
             if do_timing:
                 perf_property_times["radius"] += time.perf_counter() - perf_t
 
@@ -421,6 +421,7 @@ class ExportMixin:
             perf_t = time.perf_counter() if do_timing else 0.0
             length_val = self._fast_get_property(dyn_entity, "Length")
             calls_made += 1
+            length = _export_measurement(length_val, "Length", geometry_errors)
 
             is_poly = "POLY" in object_type_upper
             is_spline = "SPLINE" in object_type_upper
@@ -429,38 +430,40 @@ class ExportMixin:
             if is_line:
                 com_call_stats["calls_by_type"]["LINE"] += 1
                 com_call_stats["properties_skipped"] += 3
-                if length_val is None or float(length_val) == 0:
+                if "Length" in geometry_errors or length == 0:
                     try:
                         sp = self._fast_get_property(dyn_entity, "StartPoint")
                         ep = self._fast_get_property(dyn_entity, "EndPoint")
-                        if sp is not None and ep is not None:
-                            length_val = math.sqrt(sum((a - b) ** 2 for a, b in zip(sp, ep)))
-                            calls_made += 2
-                    except Exception:
-                        pass
+                        if sp is None or ep is None:
+                            raise ValueError("Line endpoints are unavailable")
+                        fallback_errors: dict[str, str] = {}
+                        fallback_length = _export_measurement(
+                            math.dist(sp, ep), "Length", fallback_errors
+                        )
+                        if not fallback_errors:
+                            length = fallback_length
+                            geometry_errors.pop("Length", None)
+                        elif "Length" in geometry_errors:
+                            geometry_errors.update(fallback_errors)
+                        calls_made += 2
+                    except Exception as exc:
+                        # Preserve a directly measured zero if optional endpoints fail.
+                        if "Length" in geometry_errors:
+                            geometry_errors["Length"] = str(exc)
+                        logger.debug("Line endpoint length fallback is unavailable: %s", exc)
             elif is_poly:
                 com_call_stats["calls_by_type"]["POLYLINE"] += 1
-                if length_val is None or float(length_val) == 0:
+                if "Length" in geometry_errors or length == 0:
                     alt_len = self._fast_get_property(dyn_entity, "TotalLength")
-                    if alt_len is not None and float(alt_len) > 0:
-                        length_val = alt_len
+                    if alt_len is not None:
+                        length = _export_measurement(alt_len, "Length", geometry_errors)
                         calls_made += 1
-
-            if length_val is not None:
-                try:
-                    length = float(length_val)
-                except (ValueError, TypeError):
-                    pass
 
             if "POLY" in object_type_upper:
                 area_val = self._fast_get_property(dyn_entity, "Area")
                 calls_made += 1
                 com_call_stats["properties_skipped"] += 2
-                if area_val is not None:
-                    try:
-                        area = float(area_val)
-                    except (ValueError, TypeError):
-                        pass
+                area = _export_measurement(area_val, "Area", geometry_errors)
             else:
                 com_call_stats["properties_skipped"] += 1
 
@@ -472,7 +475,7 @@ class ExportMixin:
 
         com_call_stats["total_calls"] += calls_made
 
-        return {
+        result = {
             "Handle": str(handle),
             "ObjectType": object_type_str,
             "Layer": str(layer).strip(),
@@ -483,6 +486,12 @@ class ExportMixin:
             "Circumference": round(circumference, 3) if circumference > 0 else 0.0,
             "Name": str(name) if name else "",
         }
+        if geometry_errors:
+            # Excel receives blank cells; JSON receives null plus explicit diagnostics.
+            for property_name in geometry_errors:
+                result[property_name] = None
+            result["GeometryErrors"] = geometry_errors
+        return result
 
     def _populate_worksheet(
         self,

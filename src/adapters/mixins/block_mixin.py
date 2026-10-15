@@ -435,16 +435,19 @@ class BlockMixin:
             def _temp_ss(doc, name):
                 try:
                     doc.SelectionSets.Item(name).Delete()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug(
+                        "Previous block-count selection set lookup or cleanup was unavailable: %s",
+                        exc,
+                    )
                 ss = doc.SelectionSets.Add(name)
                 try:
                     yield ss
                 finally:
                     try:
                         ss.Delete()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Temporary block-count selection set cleanup failed: %s", exc)
 
             def to_variant_array(types, values):
                 return win32com.client.VARIANT(types, values)

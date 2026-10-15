@@ -45,9 +45,6 @@ class FileMixin:
             document = self._get_document("save_drawing")
             config = get_config()
 
-            # SECURITY: Resolve output directory first (reference for validation)
-            _output_dir = Path(config.output.directory).expanduser().resolve()
-
             # ========== Determine Filename ==========
             if filepath:
                 save_filename = Path(filepath).name
@@ -202,10 +199,22 @@ class FileMixin:
                     # Intenta también forzarlo a nivel de aplicación (ZWCAD/AutoCAD)
                     try:
                         application.ActiveDocument = doc
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug(
+                            "ActiveDocument assignment is unsupported; checking activation: %s",
+                            exc,
+                        )
 
-                    self.document = doc
+                    # Activate() and ActiveDocument setters can return without switching.
+                    # Cache only the document independently observed as active.
+                    active_document = application.ActiveDocument
+                    target_path = str(getattr(doc, "FullName", "")).casefold()
+                    active_path = str(getattr(active_document, "FullName", "")).casefold()
+                    if str(active_document.Name).casefold() != str(doc.Name).casefold() or (
+                        target_path and active_path != target_path
+                    ):
+                        raise RuntimeError("CAD did not activate the requested drawing")
+                    self.document = active_document
 
                     # Pump Windows messages briefly to let CAD process the GUI switch
                     try:
@@ -213,8 +222,11 @@ class FileMixin:
 
                         for _ in range(5):
                             pythoncom.PumpWaitingMessages()
-                    except ImportError:
-                        pass
+                    except ImportError as exc:
+                        logger.debug(
+                            "Windows message pumping is unavailable after drawing activation: %s",
+                            exc,
+                        )
 
                     logger.info(f"Switched to drawing: {drawing_name}")
                     return True
