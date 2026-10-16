@@ -217,8 +217,6 @@ class UtilityMixin:
         """Helper to ensure application is available for an operation."""
         self._validate_connection()
         if self.application is None:
-            from core import CADConnectionError
-
             raise CADConnectionError(self.cad_type, f"No active instance for '{operation}'")
         return self.application
 
@@ -233,16 +231,12 @@ class UtilityMixin:
                 self.document = app.ActiveDocument
             except Exception as e:
                 logger.error(f"Failed to get ActiveDocument for {operation}: {e}")
-                from core import CADConnectionError
-
                 raise CADConnectionError(
                     getattr(self, "cad_type", "unknown"),
                     f"No active document for '{operation}'",
                 )
 
         if self.document is None:
-            from core import CADConnectionError
-
             raise CADConnectionError(
                 getattr(self, "cad_type", "unknown"),
                 f"No active document for '{operation}'",

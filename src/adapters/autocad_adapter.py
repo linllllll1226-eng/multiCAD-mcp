@@ -62,6 +62,33 @@ class AutoCADAdapter(
     [... docstring truncated for brevity ...]
     """
 
+    # Mixins repeat host-method declarations under TYPE_CHECKING. Make the
+    # concrete providers explicit while retaining their existing descriptors.
+    _apply_properties = UtilityMixin._apply_properties
+    _delete_selection_set = UtilityMixin._delete_selection_set
+    _fast_get_property = UtilityMixin._fast_get_property
+    _get_application = UtilityMixin._get_application
+    _get_color_index = UtilityMixin._get_color_index
+    _get_document = UtilityMixin._get_document
+    _objects_to_variant_array = UtilityMixin._objects_to_variant_array
+    _points_to_variant_array = UtilityMixin._points_to_variant_array
+    _safe_get_property = UtilityMixin._safe_get_property
+    _simulate_autocad_click = UtilityMixin._simulate_autocad_click
+    _to_radians = UtilityMixin._to_radians
+    _to_variant_array = UtilityMixin._to_variant_array
+    _track_entity = UtilityMixin._track_entity
+    _validate_document = ConnectionMixin._validate_document
+    _wait_for = UtilityMixin._wait_for
+    get_block_counts = BlockMixin.get_block_counts
+    get_block_info = BlockMixin.get_block_info
+    get_layers_info = LayerMixin.get_layers_info
+    get_selected_entity_handles = SelectionMixin.get_selected_entity_handles
+    is_connected = ConnectionMixin.is_connected
+    list_blocks = BlockMixin.list_blocks
+    refresh_view = ViewMixin.refresh_view
+    resolve_export_path = UtilityMixin.resolve_export_path
+    validate_lineweight = CADInterface.validate_lineweight
+
     def __init__(self, cad_type: str = "autocad", *, manage_com_lifecycle: bool = True):
         """Initialize AutoCAD adapter.
 

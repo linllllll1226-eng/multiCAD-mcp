@@ -23,7 +23,7 @@ Locations below refer to the baseline, so later line movement does not change th
 
 | Alert | Rule | Baseline location | Decision |
 | --- | --- | --- | --- |
-| [#6](https://github.com/linllllll1226-eng/multiCAD-mcp/security/code-scanning/6) | `py/conflicting-attributes` | `src/adapters/autocad_adapter.py:49` | Explicitly select UtilityMixin connection validation without changing effective dispatch. |
+| [#6](https://github.com/linllllll1226-eng/multiCAD-mcp/security/code-scanning/6) | `py/conflicting-attributes` | `src/adapters/autocad_adapter.py:49` | Explicitly select the existing concrete providers for all 24 methods/properties repeated in mixin typing declarations, retaining their function/property descriptors and runtime dispatch. |
 | [#7](https://github.com/linllllll1226-eng/multiCAD-mcp/security/code-scanning/7) | `py/empty-except` | `scripts/Run-CAD-Task-Tracking-Acceptance.py:483` | Keep best-effort temporary-resource cleanup, with a contextual diagnostic and no masking of a primary failure. |
 | [#8](https://github.com/linllllll1226-eng/multiCAD-mcp/security/code-scanning/8) | `py/empty-except` | `src/adapters/mixins/block_mixin.py:438` | Keep best-effort temporary-resource cleanup, with a contextual diagnostic and no masking of a primary failure. |
 | [#9](https://github.com/linllllll1226-eng/multiCAD-mcp/security/code-scanning/9) | `py/empty-except` | `src/adapters/mixins/block_mixin.py:446` | Keep best-effort temporary-resource cleanup, with a contextual diagnostic and no masking of a primary failure. |
@@ -60,7 +60,7 @@ Locations below refer to the baseline, so later line movement does not change th
 | [#45](https://github.com/linllllll1226-eng/multiCAD-mcp/security/code-scanning/45) | `py/empty-except` | `src/adapters/mixins/utility_mixin.py:280` | Allow missing-set lookup; propagate a refused deletion before recreation. |
 | [#46](https://github.com/linllllll1226-eng/multiCAD-mcp/security/code-scanning/46) | `py/empty-except` | `src/cad_memory/verifier.py:360` | Preserve layer-linetype observation errors; required center/hidden comparisons remain fail-closed. |
 | [#47](https://github.com/linllllll1226-eng/multiCAD-mcp/security/code-scanning/47) | `py/inheritance/incorrect-overridden-signature` | `src/cad_memory/database.py:633` | Give the failing store test double the exact production keyword-only signature. |
-| [#49](https://github.com/linllllll1226-eng/multiCAD-mcp/security/code-scanning/49) | `py/import-and-import-from` | `src/adapters/mixins/utility_mixin.py:17` | Use core module aliases consistently while preserving exception/type object identity. |
+| [#49](https://github.com/linllllll1226-eng/multiCAD-mcp/security/code-scanning/49) | `py/import-and-import-from` | `src/adapters/mixins/utility_mixin.py:17` | Use core module aliases consistently, including nested helper paths, while preserving exception/type object identity. |
 | [#50](https://github.com/linllllll1226-eng/multiCAD-mcp/security/code-scanning/50) | `py/pythagorean` | `src/adapters/mixins/drawing_mixin.py:487` | Use math.hypot for a stable planar dimension length. |
 | [#51](https://github.com/linllllll1226-eng/multiCAD-mcp/security/code-scanning/51) | `py/pythagorean` | `src/adapters/mixins/manipulation_mixin.py:471` | Use math.hypot for stable planar path segment lengths. |
 | [#126](https://github.com/linllllll1226-eng/multiCAD-mcp/security/code-scanning/126) | `py/unreachable-statement` | `src/adapters/mixins/export_mixin.py:359` | Remove the constant condition and its unreachable statistics branch. |
@@ -81,3 +81,7 @@ Locations below refer to the baseline, so later line movement does not change th
 ## Validation boundaries
 
 Regression tests cover unknown-count recovery, refused selection cleanup, independent document activation, invalid/zero/derived export measurements, stream fallback and preservation of a primary exception. Run the complete Windows suite, unchanged coverage floors, Ruff, mypy, docstrings, strict documentation, build/wheel checks and fresh branch CodeQL before accepting the change. These software checks do not establish a new live-DWG or whole-source reconstruction acceptance.
+
+## Full-analysis follow-up
+
+The full main analysis at `146cd92a390687ff3544b8754a7370be8267d928`, after PR #30, confirmed 52 of the 54 reviewed alerts fixed, including all 37 empty handlers. It retained #6 for additional mixin host-method declarations and #49 for three nested `core` imports. The follow-up explicitly binds all 24 reported host methods to their existing runtime providers and removes those nested imports. It preserves the original function descriptors, exception identities and all 74 type-declaration placeholders. Confirm closure with a fresh full main analysis after this follow-up; a zero-result PR diff analysis alone is insufficient.
