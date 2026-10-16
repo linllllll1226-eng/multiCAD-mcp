@@ -164,10 +164,7 @@ class ManipulationMixin:
             app = self._get_application("copy_entities")
 
             # Create a selection set with entities to copy
-            try:
-                self._delete_selection_set(document, SS_COPY)
-            except Exception:
-                pass
+            self._delete_selection_set(document, SS_COPY)
 
             ss = document.SelectionSets.Add(SS_COPY)
             try:
@@ -468,7 +465,7 @@ class ManipulationMixin:
                 """Calculate distance between two points."""
                 dx = p2[0] - p1[0]
                 dy = p2[1] - p1[1]
-                return math.sqrt(dx * dx + dy * dy)
+                return math.hypot(dx, dy)
 
             def angle_between(p1, p2):
                 """Calculate angle in radians from p1 to p2."""

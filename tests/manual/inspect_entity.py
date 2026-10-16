@@ -31,14 +31,14 @@ def inspect_entity(handle):
             print("Detected Type: LEADER (AcDbLeader)")
             try:
                 print(f"Type: {entity.Type} (0=NoArrow, 1=Arrow)")
-            except Exception:
-                pass
+            except Exception as exc:
+                print("Optional entity type property is unavailable: {}".format(exc))
 
             try:
                 print(f"Coordinate count: {len(entity.Coordinates)}")
                 print(f"Coordinates: {entity.Coordinates}")
-            except Exception:
-                pass
+            except Exception as exc:
+                print("Optional coordinate property is unavailable: {}".format(exc))
 
             try:
                 annotation = entity.Annotation
@@ -62,8 +62,8 @@ def inspect_entity(handle):
                 # Try to get MText object if possible, though MLeader usually wraps it
                 # Some interfaces expose 'MText' property
                 print(f"MText Attribute: {entity.MText.TextString}")
-            except Exception:
-                pass
+            except Exception as exc:
+                print("Optional MText property is unavailable: {}".format(exc))
 
         # List all dynamic properties
         print("\n--- Available Properties/Methods (dir) ---")

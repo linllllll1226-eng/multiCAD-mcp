@@ -74,7 +74,7 @@ def write_entity_provenance(
     return normalized
 
 
-def read_entity_provenance(entity: Any) -> dict[str, Any] | None:
+def read_entity_provenance(entity: Any, *, raise_on_error: bool = False) -> dict[str, Any] | None:
     """Read and validate the assistant XData from one entity."""
     try:
         if hasattr(entity, "GetXData"):
@@ -92,6 +92,8 @@ def read_entity_provenance(entity: Any) -> dict[str, Any] | None:
             return None
         return data
     except Exception:
+        if raise_on_error:
+            raise
         return None
 
 

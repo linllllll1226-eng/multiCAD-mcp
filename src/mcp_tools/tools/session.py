@@ -85,7 +85,7 @@ def _connect(spec: Dict[str, Any]) -> Dict[str, Any]:
         Dict with keys: success (bool), detail (str).
     """
     try:
-        _adapter = get_adapter(only_if_running=False)
+        get_adapter(only_if_running=False)
         from adapters.adapter_manager import get_active_cad_type
 
         cad_type = get_active_cad_type()

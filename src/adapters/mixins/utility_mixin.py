@@ -26,18 +26,18 @@ if sys.platform == "win32":
 else:
     raise ImportError("AutoCAD adapter requires Windows OS with COM support")
 
-from core import (
-    CADConnectionError,
-    CADOperationError,
-    InvalidParameterError,
-    Point,
-)
+
 from mcp_tools.constants import (
     AUTOCAD_WINDOW_CLASSES,
     CLICK_DELAY,
     CLICK_HOLD_DELAY,
     COLOR_MAP,
 )
+
+CADConnectionError = core_module.CADConnectionError
+CADOperationError = core_module.CADOperationError
+InvalidParameterError = core_module.InvalidParameterError
+Point = core_module.Point
 
 logger = logging.getLogger(__name__)
 
@@ -101,10 +101,13 @@ class SelectionSetManager:
         """
         # Delete if exists
         try:
-            self.document.SelectionSets.Item(self.name).Delete()
-            logger.debug(f"Deleted existing SelectionSet: {self.name}")
-        except Exception:
-            pass
+            existing = self.document.SelectionSets.Item(self.name)
+        except Exception as exc:
+            logger.debug("Selection set %s is unavailable before creation: %s", self.name, exc)
+        else:
+            # A refused deletion must stop recreation rather than hiding a collision.
+            existing.Delete()
+            logger.debug("Deleted existing SelectionSet: %s", self.name)
 
         # Create new
         self.selection_set = self.document.SelectionSets.Add(self.name)
@@ -268,17 +271,22 @@ class UtilityMixin:
             try:
                 if condition():
                     return True
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(
+                    "Wait condition is temporarily unavailable; retrying within its deadline: %s",
+                    exc,
+                )
             time.sleep(interval)
         return False
 
     def _delete_selection_set(self, document: Any, name: str) -> None:
         """Delete selection set if it exists (helper to reduce repetition)."""
         try:
-            document.SelectionSets.Item(name).Delete()
-        except Exception:
-            pass
+            selection = document.SelectionSets.Item(name)
+        except Exception as exc:
+            logger.debug("Selection set %s is unavailable before cleanup: %s", name, exc)
+            return
+        selection.Delete()
 
     def _to_variant_array(self, point: Point):
         """Convert 3D point to COM variant array."""

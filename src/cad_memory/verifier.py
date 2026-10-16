@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import math
 from collections.abc import Mapping
 from numbers import Real
 from typing import Any
 
 from .models import DrawingPlan, EntityPlan
+
+logger = logging.getLogger(__name__)
 
 
 def _safe_get(entity: Any, name: str, default: Any = None) -> Any:
@@ -357,8 +360,9 @@ class PostExecutionVerifier:
                     try:
                         layer = document.Layers.Item(actual["layer"])
                         actual["effective_linetype"] = str(layer.Linetype)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        actual["effective_linetype_error"] = str(exc)
+                        logger.debug("Layer linetype observation failed for %s: %s", handle, exc)
                 actual_entities.append(actual)
                 rows.extend(self._compare_entity(index, target, actual, plan.tolerance))
             except Exception as exc:

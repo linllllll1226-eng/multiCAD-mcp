@@ -6,7 +6,6 @@ from typing import Any
 import pytest
 
 import cad_vision.ocr as ocr_module
-from cad_vision.ocr import extract_ocr
 from cad_vision.pdf import extract_vector_pdf
 
 
@@ -38,7 +37,7 @@ class _FakePipeline:
 def test_extracts_text_boxes_and_dimension_candidates(tmp_path: Path) -> None:
     source = tmp_path / "scan.png"
     source.write_bytes(b"fake image content")
-    result = extract_ocr(
+    result = ocr_module.extract_ocr(
         source,
         pipeline_factory=lambda language, device: _FakePipeline(),
     )
@@ -57,7 +56,7 @@ def test_reports_provider_failure_without_crashing_geometry_pipeline(tmp_path: P
     def broken_factory(language: str, device: str) -> Any:
         raise RuntimeError("model unavailable")
 
-    result = extract_ocr(source, pipeline_factory=broken_factory)
+    result = ocr_module.extract_ocr(source, pipeline_factory=broken_factory)
     assert result["status"] == "error"
     assert result["error_type"] == "RuntimeError"
     assert "model unavailable" in result["error"]
@@ -118,7 +117,7 @@ def test_selected_pdf_region_maps_ocr_box_back_to_page_coordinates(tmp_path: Pat
                 )
             ]
 
-    result = extract_ocr(
+    result = ocr_module.extract_ocr(
         source,
         regions={1: [[10, 20, 110, 120]]},
         page_numbers=[],
@@ -183,7 +182,7 @@ def test_rotated_cropped_pdf_region_maps_rendered_pixels_to_vector_coordinates(
                 )
             ]
 
-    result = extract_ocr(
+    result = ocr_module.extract_ocr(
         source,
         regions={1: regions},
         page_numbers=[],
@@ -224,7 +223,7 @@ def test_pdf_render_failure_cleans_temporary_directory(tmp_path: Path, monkeypat
     monkeypatch.setattr(ocr_module.tempfile, "TemporaryDirectory", TrackingTemporaryDirectory)
     monkeypatch.setattr(ocr_module, "_pdf_ocr_inputs", fail_render)
 
-    result = extract_ocr(
+    result = ocr_module.extract_ocr(
         source,
         page_numbers=[1],
         pipeline_factory=lambda language, device: _FakePipeline(),
@@ -261,7 +260,7 @@ def test_failed_retry_discards_rebuilt_pipeline_from_cache(
     )
 
     try:
-        result = extract_ocr(source)
+        result = ocr_module.extract_ocr(source)
         assert result["status"] == "error"
         assert result["error"] == "native pipeline failed"
         assert ("ch", "cpu", 960) not in ocr_module._PIPELINES

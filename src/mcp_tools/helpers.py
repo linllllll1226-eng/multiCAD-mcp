@@ -16,18 +16,20 @@ import sys
 
 from core import InvalidParameterError, get_config
 
+logger = logging.getLogger(__name__)
+
 # ========== Setup Functions ==========
 
 
 def setup_utf8_encoding() -> None:
     """Configure UTF-8 encoding on Windows."""
     if sys.platform == "win32" and os.environ.get("PYTHONIOENCODING") is None:
-        try:
-            sys.stdin.reconfigure(encoding="utf-8")  # type: ignore
-            sys.stdout.reconfigure(encoding="utf-8")  # type: ignore
-            sys.stderr.reconfigure(encoding="utf-8")  # type: ignore
-        except AttributeError:
-            pass
+        for stream in (sys.stdin, sys.stdout, sys.stderr):
+            try:
+                stream.reconfigure(encoding="utf-8")  # type: ignore
+            except AttributeError:
+                # Embedded clients may replace just one stream with a minimal wrapper.
+                logger.debug("UTF-8 reconfiguration is unsupported for one stream")
 
 
 def setup_logging() -> logging.Logger:

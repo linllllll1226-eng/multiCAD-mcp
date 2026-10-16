@@ -215,8 +215,8 @@ def _info(spec: Dict[str, Any]) -> Dict[str, Any]:
                 layer_info["locked"] = layer.Lock
                 layer_info["frozen"] = layer.Freeze
                 layer_info["current"] = doc.ActiveLayer.Name == name
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Optional detailed layer properties are unavailable: %s", exc)
             layers.append(layer_info)
         except Exception as e:
             logger.debug(f"Error getting info for layer {name}: {e}")

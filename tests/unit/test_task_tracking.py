@@ -191,9 +191,41 @@ class FakeAdapter:
 class FailingTaskStore(SQLiteMemoryStore):
     """Store double that fails the final task/entity transaction."""
 
-    def update_task_entities_and_status(self, *args, **kwargs):
+    def update_task_entities_and_status(self, task_id, *, entity_updates, status):
         """Simulate a SQLite commit failure after CAD objects changed."""
         raise RuntimeError("simulated database failure")
+
+
+@pytest.mark.parametrize("failed_observation", ["handle", "xdata", "json"])
+def test_active_count_read_failure_is_unknown_and_recovers(
+    tmp_path, monkeypatch, failed_observation
+):
+    store = SQLiteMemoryStore(tmp_path / "memory.db")
+    entity = FakeEntity("A1", "AI_PREVIEW_OUTLINE")
+    adapter = FakeAdapter(FakeDocument([entity]))
+    _seed_task(store, adapter, "task-a", entity)
+
+    def busy_lookup(_handle):
+        raise RuntimeError("COM is busy")
+
+    if failed_observation == "handle":
+        monkeypatch.setattr(adapter.document, "HandleToObject", busy_lookup)
+    elif failed_observation == "xdata":
+        monkeypatch.setattr(entity, "GetXData", busy_lookup)
+    else:
+        app_name = entity.xdata[1][0]
+        monkeypatch.setattr(entity, "xdata", ([1001, 1000], [app_name, "invalid JSON"]))
+    manager = TaskTrackingManager(store)
+    unknown = manager.list_tasks(adapter, include_active_counts=True)["tasks"][0]
+    assert unknown["active_entity_count"] is None
+    assert unknown["observed_active_entity_count"] == 0
+    assert unknown["active_entity_count_errors"][0]["handle"] == "A1"
+    assert unknown["active_entity_count_errors"][0]["error"]
+
+    monkeypatch.undo()
+    recovered = manager.list_tasks(adapter, include_active_counts=True)["tasks"][0]
+    assert recovered["active_entity_count"] == 1
+    assert "active_entity_count_errors" not in recovered
 
 
 def _metadata(

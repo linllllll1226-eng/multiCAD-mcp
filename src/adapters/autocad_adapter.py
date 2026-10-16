@@ -7,7 +7,6 @@ Supports AutoCAD, ZWCAD, GstarCAD, and BricsCAD via factory pattern.
 Refactored to use mixin classes for better organization and maintainability.
 """
 
-import logging
 import threading
 from typing import Any, Dict
 
@@ -33,8 +32,6 @@ from .mixins import (
     com_safe,
     com_session,
 )
-
-logger = logging.getLogger(__name__)
 
 # Export helpers for backward compatibility
 __all__ = [
@@ -84,6 +81,10 @@ class AutoCADAdapter(
             "entities": [],
             "current_layer": "0",
         }
+
+    def _validate_connection(self) -> None:
+        """Use the concrete validator rather than mixin typing-only declarations."""
+        UtilityMixin._validate_connection(self)
 
     @property
     def application(self) -> Any:

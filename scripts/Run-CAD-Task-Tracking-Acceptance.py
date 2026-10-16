@@ -480,8 +480,8 @@ def main() -> int:
         if application is not None:
             try:
                 application.Quit()
-            except Exception:
-                pass
+            except Exception as exc:
+                print("Owned acceptance-process cleanup failed: {}".format(exc), file=sys.stderr)
         pythoncom.CoUninitialize()
 
 
